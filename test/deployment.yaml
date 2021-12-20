@@ -28,6 +28,12 @@ spec:
           value: "8080"
         - name: ENVIRONMENT
           value: "lab"
+        - name: EXTERNAL_ISSUER
+          value: https://replace-me-external-issuer
+        - name: EXTERNAL_TENANT_ID
+          value: replace-me-tenant-id
+        - name: EXTERNAL_CLIENT_ID
+          value: replace-me-client-id     
         ports:
         - containerPort: 8080
           name: http
@@ -38,6 +44,21 @@ kind: Service
 metadata:
   name: aad-oidc-identity
 spec:
+  selector:
+    app: aad-oidc-identity
+  ports:
+    - protocol: TCP
+      name: http
+      port: 80
+      targetPort: http
+---
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: aad-oidc-identity-external
+spec:
+  type: LoadBalancer
   selector:
     app: aad-oidc-identity
   ports:

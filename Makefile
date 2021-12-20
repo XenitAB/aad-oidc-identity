@@ -55,5 +55,5 @@ devdeploy:
 	set -e
 	docker build -t $(DOCKER_REGISTRY)/aad-oidc-identity:dev .
 	docker push $(DOCKER_REGISTRY)/aad-oidc-identity:dev
-	sed "s|image: replace-me|image: $(DOCKER_REGISTRY)/aad-oidc-identity:dev|;s|value: http://replace-me-issuer|value: $(TOKEN_ISSUER)|" test/deployment.yaml | kubectl apply -f -
+	sed "s|image: replace-me|image: $(DOCKER_REGISTRY)/aad-oidc-identity:dev|;s|value: http://replace-me-issuer|value: $(TOKEN_ISSUER)|;;s|value: https://replace-me-external-issuer|value: $(EXTERNAL_ISSUER)|;s|value: replace-me-tenant-id|value: $(EXTERNAL_TENANT_ID)|;s|value: replace-me-client-id|value: $(EXTERNAL_CLIENT_ID)|" test/deployment.yaml | kubectl apply -f -
 	kubectl rollout restart deployment aad-oidc-identity
