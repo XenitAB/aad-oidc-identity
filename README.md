@@ -1,7 +1,7 @@
 # aad-oidc-identity
 **PLEASE NOTE**: This is a pre-alpha proof of concept. The name is just a placeholder for something meaningful in the future and borrowed from [aad-pod-identity](https://github.com/Azure/aad-pod-identity).
 
-This proof of concept aims to showcase the new federated identity credentials in Azure AD working together with Service Account Token Volume Projection and Service Account Issuer Discovery in Kubernetes to create a secure way of
+This proof of concept aims to showcase the new federated identity credentials in Azure AD working together with Service Account Token Volume Projection and Service Account Issuer Discovery in Kubernetes to create a secure way for applications to get Azure AD tokens, kind of like [IRSA](https://docs.aws.amazon.com/eks/latest/userguide/iam-roles-for-service-accounts.html).
 
 ## POC TODO
 
