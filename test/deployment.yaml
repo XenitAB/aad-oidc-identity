@@ -1,0 +1,86 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aad-oidc-identity
+  labels:
+    app: aad-oidc-identity
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: aad-oidc-identity
+  template:
+    metadata:
+      labels:
+        app: aad-oidc-identity
+    spec:
+      serviceAccountName: aad-oidc-identity
+      containers:
+      - name: aad-oidc-identity
+        imagePullPolicy: Always
+        image: replace-me
+        env:
+        - name: TOKEN_ISSUER
+          value: http://replace-me-issuer
+        - name: TOKEN_AUDIENCE
+          value: "aad-oidc-identity"
+        - name: PORT
+          value: "8080"
+        - name: ENVIRONMENT
+          value: "lab"
+        - name: EXTERNAL_ISSUER
+          value: https://replace-me-external-issuer
+        - name: EXTERNAL_TENANT_ID
+          value: replace-me-tenant-id
+        - name: EXTERNAL_CLIENT_ID
+          value: replace-me-client-id     
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: aad-oidc-identity
+spec:
+  selector:
+    app: aad-oidc-identity
+  ports:
+    - protocol: TCP
+      name: http
+      port: 80
+      targetPort: http
+---
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: aad-oidc-identity-external
+spec:
+  type: LoadBalancer
+  selector:
+    app: aad-oidc-identity
+  ports:
+    - protocol: TCP
+      name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: aad-oidc-identity
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: aad-oidc-identity
+subjects:
+- kind: ServiceAccount
+  name: aad-oidc-identity
+  namespace: default
+roleRef:
+  kind: ClusterRole
+  name: system:service-account-issuer-discovery
+  apiGroup: rbac.authorization.k8s.io
