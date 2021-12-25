@@ -13,9 +13,10 @@ This proof of concept aims to showcase the new federated identity credentials in
 - [x] Internal endpoint for token switching from Kubernetes JWT to Azure AD JWT (`/internal/token`)
 - [x] Create a small overview diagram
 - [x] Document the flow to showcase the functionality
-- [ ] Add support for Client ID discovery through annotation
-- [ ] Add support for Tenant ID discovery through annotation (?)
-- [ ] Add support to request different scopes
+- [x] Client ID discovery through annotation
+- [x] Tenant ID discovery through annotation
+- [x] Scope discovery through annotation
+- [ ] Cache JWK outside of ephemeral container (kube secret?)
 
 ## Overview
 
