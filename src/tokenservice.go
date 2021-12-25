@@ -2,12 +2,9 @@ package main
 
 import (
 	"context"
-	"crypto/tls"
-	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
@@ -24,36 +21,26 @@ import (
 
 type tokenService struct {
 	server *http.Server
+	kr     *kubeReader
 }
 
-func NewTokenService(cfg config) (*tokenService, error) {
+func NewTokenService(cfg config, kr *kubeReader) (*tokenService, error) {
+	ts := &tokenService{
+		kr: kr,
+	}
+
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.Default()
 
-	caCert, err := ioutil.ReadFile(cfg.CAPath)
+	httpClient := kr.getHttpClient()
+
+	issuer, err := kr.getIssuer()
 	if err != nil {
-		return nil, fmt.Errorf("unable to extract ca certificate: %w", err)
-	}
-	caCertPool := x509.NewCertPool()
-	caCertPool.AppendCertsFromPEM(caCert)
-
-	token, err := ioutil.ReadFile(cfg.TokenPath)
-	if err != nil {
-		return nil, fmt.Errorf("unable to extract kubernetes service account token: %w", err)
-	}
-
-	transport := newAddHeaderTransport(&http.Transport{
-		TLSClientConfig: &tls.Config{
-			RootCAs: caCertPool,
-		},
-	}, string(token))
-
-	httpClient := &http.Client{
-		Transport: transport,
+		return nil, err
 	}
 
 	oidcMiddleware := oidcgin.New(
-		oidcoptions.WithIssuer(cfg.TokenIssuer),
+		oidcoptions.WithIssuer(issuer),
 		oidcoptions.WithRequiredAudience(cfg.TokenAudience),
 		oidcoptions.WithLazyLoadJwks(true),
 		oidcoptions.WithHttpClient(httpClient),
@@ -67,7 +54,7 @@ func NewTokenService(cfg config) (*tokenService, error) {
 		return nil, err
 	}
 
-	internal.GET("/token", internalTokenHttpHandler(jwks, cfg.ExternalIssuer, cfg.ExternalTenantID, cfg.ExternalClientID))
+	internal.GET("/token", ts.internalTokenHttpHandler(jwks, cfg.ExternalIssuer))
 	external.GET("/.well-known/openid-configuration", metadataHttpHandler(cfg.ExternalIssuer))
 	external.GET("/jwks", jwksHttpHandler(jwks))
 
@@ -78,9 +65,9 @@ func NewTokenService(cfg config) (*tokenService, error) {
 		Handler: r,
 	}
 
-	return &tokenService{
-		server: srv,
-	}, nil
+	ts.server = srv
+
+	return ts, nil
 }
 
 type metadata struct {
@@ -159,15 +146,15 @@ type microsoftAccessTokenResponse struct {
 }
 
 // https://docs.microsoft.com/en-us/azure/active-directory/develop/v2-oauth2-client-creds-grant-flow#third-case-access-token-request-with-a-federated-credential
-func getMicrosoftAccessToken(ctx context.Context, tenantId string, clientId string, internalToken string) (microsoftAccessTokenResponse, error) {
+func getMicrosoftAccessToken(ctx context.Context, reqData requestData, internalToken string) (microsoftAccessTokenResponse, error) {
 	data := url.Values{}
-	data.Add("scope", "https://graph.microsoft.com/.default")
-	data.Add("client_id", clientId)
+	data.Add("scope", reqData.scope)
+	data.Add("client_id", reqData.clientId)
 	data.Add("client_assertion_type", "urn:ietf:params:oauth:client-assertion-type:jwt-bearer")
 	data.Add("client_assertion", internalToken)
 	data.Add("grant_type", "client_credentials")
 
-	remoteUrl, err := url.Parse(fmt.Sprintf("https://login.microsoftonline.com/%s/oauth2/v2.0/token", tenantId))
+	remoteUrl, err := url.Parse(fmt.Sprintf("https://login.microsoftonline.com/%s/oauth2/v2.0/token", reqData.tenantId))
 	if err != nil {
 		return microsoftAccessTokenResponse{}, err
 	}
@@ -231,7 +218,7 @@ func getSubjectFromClaims(c *gin.Context) (string, error) {
 	return sub, nil
 }
 
-func internalTokenHttpHandler(jwks *jwksHandler, issuer string, tenantId string, clientId string) gin.HandlerFunc {
+func (ts *tokenService) internalTokenHttpHandler(jwks *jwksHandler, issuer string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		subject, err := getSubjectFromClaims(c)
 		if err != nil {
@@ -245,7 +232,19 @@ func internalTokenHttpHandler(jwks *jwksHandler, issuer string, tenantId string,
 			return
 		}
 
-		msToken, err := getMicrosoftAccessToken(c.Request.Context(), tenantId, clientId, internalToken)
+		namespace, serviceAccount, err := getNamespaceAndServiceAccountFromSubject(subject)
+		if err != nil {
+			c.AbortWithError(http.StatusInternalServerError, err)
+			return
+		}
+
+		reqData, err := ts.kr.getClientIDFromServiceAccount(c.Request.Context(), namespace, serviceAccount)
+		if err != nil {
+			c.AbortWithError(http.StatusInternalServerError, err)
+			return
+		}
+
+		msToken, err := getMicrosoftAccessToken(c.Request.Context(), reqData, internalToken)
 		if err != nil {
 			c.AbortWithError(http.StatusInternalServerError, err)
 			return
@@ -255,19 +254,19 @@ func internalTokenHttpHandler(jwks *jwksHandler, issuer string, tenantId string,
 	}
 }
 
-func newAddHeaderTransport(rt http.RoundTripper, token string) *addHeaderTransport {
-	return &addHeaderTransport{
-		rt:    rt,
-		token: token,
+func getNamespaceAndServiceAccountFromSubject(sub string) (string, string, error) {
+	// system:serviceaccount:namespace:serviceaccount
+	comp := strings.SplitN(sub, ":", 4)
+	namespace := comp[2]
+	if namespace == "" {
+		return "", "", fmt.Errorf("namespace is empty in subject: %s", sub)
 	}
-}
 
-type addHeaderTransport struct {
-	rt    http.RoundTripper
-	token string
-}
+	serviceAccount := comp[3]
+	if serviceAccount == "" {
+		return "", "", fmt.Errorf("serviceAccount is empty in subject: %s", sub)
+	}
 
-func (adt *addHeaderTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", adt.token))
-	return adt.rt.RoundTrip(req)
+	return namespace, serviceAccount, nil
+
 }

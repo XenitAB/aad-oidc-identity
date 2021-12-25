@@ -20,8 +20,6 @@ spec:
         imagePullPolicy: Always
         image: replace-me
         env:
-        - name: TOKEN_ISSUER
-          value: http://replace-me-issuer
         - name: TOKEN_AUDIENCE
           value: "aad-oidc-identity"
         - name: PORT
@@ -30,10 +28,8 @@ spec:
           value: "lab"
         - name: EXTERNAL_ISSUER
           value: https://replace-me-external-issuer
-        - name: EXTERNAL_TENANT_ID
-          value: replace-me-tenant-id
-        - name: EXTERNAL_CLIENT_ID
-          value: replace-me-client-id     
+        - name: DEFAULT_TENANT_ID
+          value: replace-me-tenant-id 
         ports:
         - containerPort: 8080
           name: http
@@ -51,7 +47,6 @@ spec:
       name: http
       port: 80
       targetPort: http
----
 ---
 apiVersion: v1
 kind: Service
@@ -73,6 +68,17 @@ metadata:
   name: aad-oidc-identity
 ---
 apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: aad-oidc-identity
+rules:
+- apiGroups: [""]
+  resources: ["serviceaccounts"]
+  verbs: ["get", "watch", "list"]
+- nonResourceURLs: ["/.well-known/openid-configuration", "/openid/v1/jwks"]
+  verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   name: aad-oidc-identity
@@ -82,5 +88,5 @@ subjects:
   namespace: default
 roleRef:
   kind: ClusterRole
-  name: system:service-account-issuer-discovery
+  name: aad-oidc-identity
   apiGroup: rbac.authorization.k8s.io

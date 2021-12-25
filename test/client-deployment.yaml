@@ -1,9 +1,19 @@
 apiVersion: v1
+kind: ServiceAccount
+metadata:
+  annotations:
+    aad-oidc-identity.xenit.io/client-id: 00000000-0000-0000-0000-000000000000
+    #aad-oidc-identity.xenit.io/tenant-id: 00000000-0000-0000-0000-000000000000 # optional, will default to the configured one
+    #aad-oidc-identity.xenit.io/scope: https://management.core.windows.net/.default # optional, will default to https://management.core.windows.net/.default
+  namespace: default
+  name: client
+---
+apiVersion: v1
 kind: Pod
 metadata:
   name: client
 spec:
-  serviceAccountName: default
+  serviceAccountName: client
   containers:
     - image: nginx:alpine
       name: oidc
