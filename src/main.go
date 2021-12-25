@@ -29,7 +29,12 @@ func main() {
 }
 
 func run(ctx context.Context, cfg config) error {
-	ts, err := NewTokenService(cfg)
+	kr, err := newKubeReader(cfg, "")
+	if err != nil {
+		return err
+	}
+
+	ts, err := NewTokenService(cfg, kr)
 	if err != nil {
 		return err
 	}
