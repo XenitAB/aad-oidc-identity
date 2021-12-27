@@ -2,7 +2,6 @@ package main
 
 import (
 	"crypto"
-	"crypto/rand"
 	"crypto/rsa"
 	"fmt"
 	"sync"
@@ -17,13 +16,13 @@ type jwksHandler struct {
 	publicKeys  []jwk.Key
 }
 
-func newJwksHandler() (*jwksHandler, error) {
+func newJwksHandler(rsaKey *rsa.PrivateKey) (*jwksHandler, error) {
 	h := &jwksHandler{
 		privateKeys: []jwk.Key{},
 		publicKeys:  []jwk.Key{},
 	}
 
-	err := h.addNewKey()
+	err := h.addJwkFromRsa(rsaKey)
 	if err != nil {
 		return nil, err
 	}
@@ -31,13 +30,7 @@ func newJwksHandler() (*jwksHandler, error) {
 	return h, nil
 }
 
-func (h *jwksHandler) addNewKey() error {
-	rsaKey, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		fmt.Printf("failed to generate new RSA private key: %s\n", err)
-		return err
-	}
-
+func (h *jwksHandler) addJwkFromRsa(rsaKey *rsa.PrivateKey) error {
 	key, err := jwk.New(rsaKey)
 	if err != nil {
 		return err

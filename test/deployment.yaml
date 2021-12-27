@@ -90,3 +90,28 @@ roleRef:
   kind: ClusterRole
   name: aad-oidc-identity
   apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  namespace: default
+  name: aad-oidc-identity-jwks
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  resourceNames: ["aad-oidc-identity-jwks"]
+  verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  namespace: default
+  name: aad-oidc-identity-jwks
+subjects:
+- kind: ServiceAccount
+  name: aad-oidc-identity
+  namespace: default
+roleRef:
+  kind: Role
+  name: aad-oidc-identity-jwks
+  apiGroup: rbac.authorization.k8s.io
