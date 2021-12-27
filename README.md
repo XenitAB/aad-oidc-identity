@@ -17,7 +17,7 @@ This proof of concept aims to showcase the new federated identity credentials in
 - [x] Client ID discovery through annotation
 - [x] Tenant ID discovery through annotation
 - [x] Scope discovery through annotation
-- [x] Cache JWK outside of ephemeral container (kube secret?)
+- [x] Store JWK in Kubernetes secret
 
 ## Overview
 
