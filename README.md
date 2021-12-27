@@ -19,6 +19,14 @@ This proof of concept aims to showcase the new federated identity credentials in
 - [x] Scope discovery through annotation
 - [x] Store JWK in Kubernetes secret
 
+## AWS NOTES
+
+Get your thumbprint by following this guide: https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_providers_create_oidc_verify-thumbprint.html
+
+```bash
+aws iam create-open-id-connect-provider --url [issuer] --thumbprint-list [thumbprint]
+```
+
 ## Overview
 
 ### High level diagram
