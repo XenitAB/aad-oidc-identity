@@ -32,9 +32,9 @@ func NewTokenService(cfg config, kr *kubeReader) (*tokenService, error) {
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.Default()
 
-	httpClient := kr.getHttpClient()
+	httpClient := kr.getKubeHttpClient()
 
-	issuer, err := kr.getIssuer()
+	issuer, err := kr.getKubeIssuer()
 	if err != nil {
 		return nil, err
 	}
@@ -49,12 +49,17 @@ func NewTokenService(cfg config, kr *kubeReader) (*tokenService, error) {
 	internal := r.Group("/internal/", oidcMiddleware)
 	external := r.Group("/external/")
 
-	jwks, err := newJwksHandler()
+	rsaKey, err := kr.getCertificateFromSecret(context.Background(), "default", "aad-oidc-identity-jwks")
 	if err != nil {
 		return nil, err
 	}
 
-	internal.GET("/token", ts.internalTokenHttpHandler(jwks, cfg.ExternalIssuer))
+	jwks, err := newJwksHandler(rsaKey)
+	if err != nil {
+		return nil, err
+	}
+
+	internal.GET("/token/azure", ts.internalAzureTokenHttpHandler(jwks, cfg.ExternalIssuer))
 	external.GET("/.well-known/openid-configuration", metadataHttpHandler(cfg.ExternalIssuer))
 	external.GET("/jwks", jwksHttpHandler(jwks))
 
@@ -146,15 +151,15 @@ type microsoftAccessTokenResponse struct {
 }
 
 // https://docs.microsoft.com/en-us/azure/active-directory/develop/v2-oauth2-client-creds-grant-flow#third-case-access-token-request-with-a-federated-credential
-func getMicrosoftAccessToken(ctx context.Context, reqData requestData, internalToken string) (microsoftAccessTokenResponse, error) {
+func getMicrosoftAccessToken(ctx context.Context, azureData azureAnnotations, internalToken string) (microsoftAccessTokenResponse, error) {
 	data := url.Values{}
-	data.Add("scope", reqData.scope)
-	data.Add("client_id", reqData.clientId)
+	data.Add("scope", azureData.scope)
+	data.Add("client_id", azureData.clientId)
 	data.Add("client_assertion_type", "urn:ietf:params:oauth:client-assertion-type:jwt-bearer")
 	data.Add("client_assertion", internalToken)
 	data.Add("grant_type", "client_credentials")
 
-	remoteUrl, err := url.Parse(fmt.Sprintf("https://login.microsoftonline.com/%s/oauth2/v2.0/token", reqData.tenantId))
+	remoteUrl, err := url.Parse(fmt.Sprintf("https://login.microsoftonline.com/%s/oauth2/v2.0/token", azureData.tenantId))
 	if err != nil {
 		return microsoftAccessTokenResponse{}, err
 	}
@@ -218,7 +223,7 @@ func getSubjectFromClaims(c *gin.Context) (string, error) {
 	return sub, nil
 }
 
-func (ts *tokenService) internalTokenHttpHandler(jwks *jwksHandler, issuer string) gin.HandlerFunc {
+func (ts *tokenService) internalAzureTokenHttpHandler(jwks *jwksHandler, issuer string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		subject, err := getSubjectFromClaims(c)
 		if err != nil {
@@ -238,7 +243,7 @@ func (ts *tokenService) internalTokenHttpHandler(jwks *jwksHandler, issuer strin
 			return
 		}
 
-		reqData, err := ts.kr.getClientIDFromServiceAccount(c.Request.Context(), namespace, serviceAccount)
+		reqData, err := ts.kr.getAzureAnnotations(c.Request.Context(), namespace, serviceAccount)
 		if err != nil {
 			c.AbortWithError(http.StatusInternalServerError, err)
 			return
