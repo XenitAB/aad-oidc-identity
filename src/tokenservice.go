@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -76,32 +75,32 @@ func NewTokenService(cfg config, kr *kubeReader) (*tokenService, error) {
 	return ts, nil
 }
 
-// "authorization_endpoint": "https://accounts.example.com/o/oauth2/v2/auth",
-// "device_authorization_endpoint": "https://oauth2.exampleapis.com/device/code",
-// "token_endpoint": "https://oauth2.exampleapis.com/token",
-// "userinfo_endpoint": "https://openidconnect.exampleapis.com/v1/userinfo",
-// "revocation_endpoint": "https://oauth2.exampleapis.com/revoke",
-
 type metadata struct {
-	Issuer                      string `json:"issuer"`
-	JwksUri                     string `json:"jwks_uri"`
-	AuthorizationEndpoint       string `json:"authorization_endpoint"`
-	DeviceAuthorizationEndpoint string `json:"device_authorization_endpoint"`
-	TokenEndpoint               string `json:"token_endpoint"`
-	UserinfoEndpoint            string `json:"userinfo_endpoint"`
-	RevocationEndpoint          string `json:"revocation_endpoint"`
+	Issuer  string `json:"issuer"`
+	JwksUri string `json:"jwks_uri"`
+
+	// These are required by AWS or else the following error will occur:
+	// <ErrorResponse>
+	//   <Error>
+	//     <Type>Sender</Type>
+	//     <Code>InvalidIdentityToken</Code>
+	//     <Message>Couldn't retrieve verification key from your identity provider,  please reference AssumeRoleWithWebIdentity documentation for requirements</Message>
+	//   </Error>
+	//   <RequestId>00000000-0000-0000-0000-000000000000</RequestId>
+	// </ErrorResponse>
+	ResponseTypesSupported           []string `json:"response_types_supported"`
+	IdTokenSigningAlgValuesSupported []string `json:"id_token_signing_alg_values_supported"`
+	SubjectTypesSupported            []string `json:"subject_types_supported"`
 }
 
 func metadataHttpHandler(issuer string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		data := metadata{
-			Issuer:                      issuer,
-			JwksUri:                     fmt.Sprintf("%s/jwks", issuer),
-			AuthorizationEndpoint:       fmt.Sprintf("%s/fake/auth", issuer),
-			TokenEndpoint:               fmt.Sprintf("%s/fake/token", issuer),
-			UserinfoEndpoint:            fmt.Sprintf("%s/fake/userinfo", issuer),
-			DeviceAuthorizationEndpoint: fmt.Sprintf("%s/fake/deviceauth", issuer),
-			RevocationEndpoint:          fmt.Sprintf("%s/fake/revoke", issuer),
+			Issuer:                           issuer,
+			JwksUri:                          fmt.Sprintf("%s/jwks", issuer),
+			ResponseTypesSupported:           []string{"id_token"},
+			IdTokenSigningAlgValuesSupported: []string{"RS256"},
+			SubjectTypesSupported:            []string{"public", "pairwise"},
 		}
 
 		c.JSON(http.StatusOK, data)
@@ -161,14 +160,8 @@ func newAccessToken(jwks *jwksHandler, issuer string, subject string, aud string
 	return access, nil
 }
 
-type microsoftAccessTokenResponse struct {
-	TokenType   string `json:"token_type"`
-	ExpiresIn   int    `json:"expires_in"`
-	AccessToken string `json:"access_token"`
-}
-
 // https://docs.microsoft.com/en-us/azure/active-directory/develop/v2-oauth2-client-creds-grant-flow#third-case-access-token-request-with-a-federated-credential
-func getMicrosoftAccessToken(ctx context.Context, azureData azureAnnotations, internalToken string) (microsoftAccessTokenResponse, error) {
+func getMicrosoftAccessToken(ctx context.Context, azureData azureAnnotations, internalToken string) ([]byte, string, error) {
 	data := url.Values{}
 	data.Add("scope", azureData.scope)
 	data.Add("client_id", azureData.clientId)
@@ -178,111 +171,92 @@ func getMicrosoftAccessToken(ctx context.Context, azureData azureAnnotations, in
 
 	remoteUrl, err := url.Parse(fmt.Sprintf("https://login.microsoftonline.com/%s/oauth2/v2.0/token", azureData.tenantId))
 	if err != nil {
-		return microsoftAccessTokenResponse{}, err
+		return nil, "", err
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, remoteUrl.String(), strings.NewReader(data.Encode()))
 	if err != nil {
-		return microsoftAccessTokenResponse{}, err
+		return nil, "", err
 	}
 
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return microsoftAccessTokenResponse{}, err
+		return nil, "", err
 	}
 
 	bodyBytes, err := io.ReadAll(res.Body)
 	if err != nil {
-		return microsoftAccessTokenResponse{}, err
+		return nil, "", err
 	}
-
-	log.Printf("Response code: %d", res.StatusCode)
-	log.Printf("Response: %s", string(bodyBytes))
 
 	defer res.Body.Close()
 
-	var responseData microsoftAccessTokenResponse
-	err = json.Unmarshal(bodyBytes, &responseData)
-	if err != nil {
-		return microsoftAccessTokenResponse{}, err
+	log.Printf("Azure response code: %d", res.StatusCode)
+	log.Printf("Azure response: %s", string(bodyBytes))
+
+	if res.StatusCode != 200 {
+		return nil, "", fmt.Errorf("received a non 200 status code: %d", res.StatusCode)
 	}
 
-	if responseData.AccessToken == "" {
-		return microsoftAccessTokenResponse{}, fmt.Errorf("no access token in response")
+	contentType := res.Header.Get("Content-Type")
+	if contentType == "" {
+		return nil, "", fmt.Errorf("content type header is empty")
 	}
 
-	return responseData, nil
+	return bodyBytes, contentType, nil
 }
 
-// ?Action=AssumeRoleWithWebIdentity
-// &DurationSeconds=3600
-// &PolicyArns.member.1.arn=arn:aws:iam::123456789012:policy/webidentitydemopolicy1
-// &PolicyArns.member.2.arn=arn:aws:iam::123456789012:policy/webidentitydemopolicy2
-// &ProviderId=www.amazon.com
-// &RoleSessionName=app1
-// &RoleArn=arn:aws:iam::123456789012:role/FederatedWebIdentityRole
-// &WebIdentityToken=Atza%7CIQEBLjAsAhRFiXuWpUXuRvQ9PZL3GMFcYevydwIUFAHZwXZXX
-// XXXXXXJnrulxKDHwy87oGKPznh0D6bEQZTSCzyoCtL_8S07pLpr0zMbn6w1lfVZKNTBdDansFB
-// mtGnIsIapjI6xKR02Yc_2bQ8LZbUXSGm6Ry6_BG7PrtLZtj_dfCTj92xNGed-CrKqjG7nPBjNI
-// L016GGvuS5gSvPRUxWES3VYfm1wl7WTI7jn-Pcb6M-buCgHhFOzTQxod27L9CqnOLio7N3gZAG
-// psp6n1-AJBOCJckcyXe2c6uD0srOJeZlKUm2eTDVMf8IehDVI0r1QOnTV6KzzAI3OY87Vd_cVMQ
-// &Version=2011-06-15
-
-// FIXME: Needs to be finished
 // https://docs.aws.amazon.com/STS/latest/APIReference/API_AssumeRoleWithWebIdentity.html
-func getAwsAccessToken(ctx context.Context, awsData awsAnnotations, internalToken string) (microsoftAccessTokenResponse, error) {
-	data := url.Values{}
-	data.Add("action", "AssumeRoleWithWebIdentity")
-	data.Add("DurationSeconds", "3600")
-	data.Add("PolicyArns.member.1.arn", awsData.roleArn)
-	data.Add("ProviderId", "www.amazon.com")
-	data.Add("action", "AssumeRoleWithWebIdentity")
-	data.Add("action", "AssumeRoleWithWebIdentity")
-	data.Add("action", "AssumeRoleWithWebIdentity")
-	data.Add("action", "AssumeRoleWithWebIdentity")
-	data.Add("action", "AssumeRoleWithWebIdentity")
-	data.Add("action", "AssumeRoleWithWebIdentity")
-
-	remoteUrl, err := url.Parse(fmt.Sprintf("https://sts.amazonaws.com/?querySholdBeHere"))
+func getAwsAccessToken(ctx context.Context, awsData awsAnnotations, internalToken string, subject string) ([]byte, string, error) {
+	remoteUrl, err := url.Parse("https://sts.amazonaws.com/")
 	if err != nil {
-		return microsoftAccessTokenResponse{}, err
+		return nil, "", err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, remoteUrl.String(), strings.NewReader(data.Encode()))
-	if err != nil {
-		return microsoftAccessTokenResponse{}, err
-	}
+	query := url.Values{}
+	query.Add("Action", "AssumeRoleWithWebIdentity")
+	query.Add("DurationSeconds", "3600")
+	query.Add("RoleSessionName", strings.ReplaceAll(subject, ":", "_"))
+	query.Add("RoleArn", awsData.roleArn)
+	query.Add("Version", "2011-06-15")
+	query.Add("WebIdentityToken", internalToken)
 
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	remoteUrl.RawQuery = query.Encode()
+
+	fmt.Printf("AWS Request: %s\n", remoteUrl.String())
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, remoteUrl.String(), nil)
+	if err != nil {
+		return nil, "", err
+	}
 
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return microsoftAccessTokenResponse{}, err
+		return nil, "", err
 	}
 
 	bodyBytes, err := io.ReadAll(res.Body)
 	if err != nil {
-		return microsoftAccessTokenResponse{}, err
+		return nil, "", err
 	}
-
-	log.Printf("Response code: %d", res.StatusCode)
-	log.Printf("Response: %s", string(bodyBytes))
 
 	defer res.Body.Close()
 
-	var responseData microsoftAccessTokenResponse
-	err = json.Unmarshal(bodyBytes, &responseData)
-	if err != nil {
-		return microsoftAccessTokenResponse{}, err
+	log.Printf("AWS response code: %d", res.StatusCode)
+	log.Printf("AWS response: %s", string(bodyBytes))
+
+	if res.StatusCode != 200 {
+		return nil, "", fmt.Errorf("received a non 200 status code: %d", res.StatusCode)
 	}
 
-	if responseData.AccessToken == "" {
-		return microsoftAccessTokenResponse{}, fmt.Errorf("no access token in response")
+	contentType := res.Header.Get("Content-Type")
+	if contentType == "" {
+		return nil, "", fmt.Errorf("content type header is empty")
 	}
 
-	return responseData, nil
+	return bodyBytes, contentType, nil
 }
 
 func getSubjectFromClaims(c *gin.Context) (string, error) {
@@ -335,13 +309,13 @@ func (ts *tokenService) internalAzureTokenHttpHandler(jwks *jwksHandler, issuer 
 			return
 		}
 
-		msToken, err := getMicrosoftAccessToken(c.Request.Context(), reqData, internalToken)
+		responseData, contentType, err := getMicrosoftAccessToken(c.Request.Context(), reqData, internalToken)
 		if err != nil {
 			c.AbortWithError(http.StatusInternalServerError, err)
 			return
 		}
 
-		c.JSON(http.StatusOK, msToken)
+		c.Data(http.StatusOK, contentType, responseData)
 	}
 }
 
@@ -371,13 +345,13 @@ func (ts *tokenService) internalAwsTokenHttpHandler(jwks *jwksHandler, issuer st
 			return
 		}
 
-		msToken, err := getAwsAccessToken(c.Request.Context(), reqData, internalToken)
+		responseData, contentType, err := getAwsAccessToken(c.Request.Context(), reqData, internalToken, subject)
 		if err != nil {
 			c.AbortWithError(http.StatusInternalServerError, err)
 			return
 		}
 
-		c.JSON(http.StatusOK, msToken)
+		c.Data(http.StatusOK, contentType, responseData)
 	}
 }
 
