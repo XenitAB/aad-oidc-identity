@@ -25,6 +25,7 @@ const (
 	azureTenantIdAnnotationKey = "aad-oidc-identity.xenit.io/tenant-id"
 	azureScopeAnnotationKey    = "aad-oidc-identity.xenit.io/scope"
 	azureDefaultScope          = "https://management.core.windows.net/.default"
+	awsRoleArnAnnotationKey    = "aad-oidc-identity.xenit.io/role-arn"
 )
 
 type kubeReader struct {
@@ -222,6 +223,26 @@ func (k *kubeReader) getAzureAnnotations(ctx context.Context, namespace string, 
 		clientId: clientId,
 		tenantId: tenantId,
 		scope:    scope,
+	}, nil
+}
+
+type awsAnnotations struct {
+	roleArn string
+}
+
+func (k *kubeReader) getAwsAnnotations(ctx context.Context, namespace string, name string) (awsAnnotations, error) {
+	annotations, err := k.getServiceAccountAnnotations(ctx, namespace, name)
+	if err != nil {
+		return awsAnnotations{}, err
+	}
+
+	roleArn, ok := annotations[awsRoleArnAnnotationKey]
+	if !ok {
+		return awsAnnotations{}, fmt.Errorf("could not find annotation (%s) on service account", awsRoleArnAnnotationKey)
+	}
+
+	return awsAnnotations{
+		roleArn: roleArn,
 	}, nil
 }
 

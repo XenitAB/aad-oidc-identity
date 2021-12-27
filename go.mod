@@ -6,6 +6,7 @@ require (
 	github.com/alexflint/go-arg v1.4.2
 	github.com/gin-gonic/gin v1.7.7
 	github.com/lestrrat-go/jwx v1.2.11
+	github.com/stretchr/testify v1.7.0
 	github.com/xenitab/go-oidc-middleware v0.0.23
 	github.com/xenitab/go-oidc-middleware/oidcgin v0.0.23
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
@@ -43,6 +44,7 @@ require (
 	github.com/onsi/ginkgo v1.14.1 // indirect
 	github.com/onsi/gomega v1.10.2 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
+	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/ugorji/go/codec v1.2.6 // indirect
 	github.com/zclconf/go-cty v1.10.0 // indirect

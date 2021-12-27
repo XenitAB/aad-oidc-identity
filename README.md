@@ -18,6 +18,16 @@ This proof of concept aims to showcase the new federated identity credentials in
 - [x] Tenant ID discovery through annotation
 - [x] Scope discovery through annotation
 - [x] Store JWK in Kubernetes secret
+- [x] Add AWS support
+- [ ] Document AWS support
+
+## AWS NOTES
+
+Get your thumbprint by following this guide: https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_providers_create_oidc_verify-thumbprint.html
+
+```bash
+aws iam create-open-id-connect-provider --url [issuer] --thumbprint-list [thumbprint]
+```
 
 ## Overview
 
@@ -44,6 +54,7 @@ This proof of concept aims to showcase the new federated identity credentials in
    metadata:
      annotations:
        aad-oidc-identity.xenit.io/client-id: 00000000-0000-0000-0000-000000000000
+       aad-oidc-identity.xenit.io/role-arn: arn:aws:iam::123456789:role/test
      namespace: team1
      name: team1
    ```

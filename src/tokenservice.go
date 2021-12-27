@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -60,6 +59,7 @@ func NewTokenService(cfg config, kr *kubeReader) (*tokenService, error) {
 	}
 
 	internal.GET("/token/azure", ts.internalAzureTokenHttpHandler(jwks, cfg.ExternalIssuer))
+	internal.GET("/token/aws", ts.internalAwsTokenHttpHandler(jwks, cfg.ExternalIssuer))
 	external.GET("/.well-known/openid-configuration", metadataHttpHandler(cfg.ExternalIssuer))
 	external.GET("/jwks", jwksHttpHandler(jwks))
 
@@ -78,13 +78,29 @@ func NewTokenService(cfg config, kr *kubeReader) (*tokenService, error) {
 type metadata struct {
 	Issuer  string `json:"issuer"`
 	JwksUri string `json:"jwks_uri"`
+
+	// These are required by AWS or else the following error will occur:
+	// <ErrorResponse>
+	//   <Error>
+	//     <Type>Sender</Type>
+	//     <Code>InvalidIdentityToken</Code>
+	//     <Message>Couldn't retrieve verification key from your identity provider,  please reference AssumeRoleWithWebIdentity documentation for requirements</Message>
+	//   </Error>
+	//   <RequestId>00000000-0000-0000-0000-000000000000</RequestId>
+	// </ErrorResponse>
+	ResponseTypesSupported           []string `json:"response_types_supported"`
+	IdTokenSigningAlgValuesSupported []string `json:"id_token_signing_alg_values_supported"`
+	SubjectTypesSupported            []string `json:"subject_types_supported"`
 }
 
 func metadataHttpHandler(issuer string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		data := metadata{
-			Issuer:  issuer,
-			JwksUri: fmt.Sprintf("%s/jwks", issuer),
+			Issuer:                           issuer,
+			JwksUri:                          fmt.Sprintf("%s/jwks", issuer),
+			ResponseTypesSupported:           []string{"id_token"},
+			IdTokenSigningAlgValuesSupported: []string{"RS256"},
+			SubjectTypesSupported:            []string{"public", "pairwise"},
 		}
 
 		c.JSON(http.StatusOK, data)
@@ -99,12 +115,12 @@ func jwksHttpHandler(jwks *jwksHandler) gin.HandlerFunc {
 	}
 }
 
-func newAccessToken(jwks *jwksHandler, issuer string, subject string) (string, error) {
+func newAccessToken(jwks *jwksHandler, issuer string, subject string, aud string) (string, error) {
 	privKey := jwks.getPrivateKey()
 
 	c := map[string]interface{}{
 		jwt.IssuerKey:     issuer,
-		jwt.AudienceKey:   "api://AzureADTokenExchange",
+		jwt.AudienceKey:   aud,
 		jwt.SubjectKey:    subject,
 		jwt.IssuedAtKey:   time.Now().Unix(),
 		jwt.NotBeforeKey:  time.Now().Unix(),
@@ -144,14 +160,8 @@ func newAccessToken(jwks *jwksHandler, issuer string, subject string) (string, e
 	return access, nil
 }
 
-type microsoftAccessTokenResponse struct {
-	TokenType   string `json:"token_type"`
-	ExpiresIn   int    `json:"expires_in"`
-	AccessToken string `json:"access_token"`
-}
-
 // https://docs.microsoft.com/en-us/azure/active-directory/develop/v2-oauth2-client-creds-grant-flow#third-case-access-token-request-with-a-federated-credential
-func getMicrosoftAccessToken(ctx context.Context, azureData azureAnnotations, internalToken string) (microsoftAccessTokenResponse, error) {
+func getMicrosoftAccessToken(ctx context.Context, azureData azureAnnotations, internalToken string) ([]byte, string, error) {
 	data := url.Values{}
 	data.Add("scope", azureData.scope)
 	data.Add("client_id", azureData.clientId)
@@ -161,42 +171,92 @@ func getMicrosoftAccessToken(ctx context.Context, azureData azureAnnotations, in
 
 	remoteUrl, err := url.Parse(fmt.Sprintf("https://login.microsoftonline.com/%s/oauth2/v2.0/token", azureData.tenantId))
 	if err != nil {
-		return microsoftAccessTokenResponse{}, err
+		return nil, "", err
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, remoteUrl.String(), strings.NewReader(data.Encode()))
 	if err != nil {
-		return microsoftAccessTokenResponse{}, err
+		return nil, "", err
 	}
 
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return microsoftAccessTokenResponse{}, err
+		return nil, "", err
 	}
 
 	bodyBytes, err := io.ReadAll(res.Body)
 	if err != nil {
-		return microsoftAccessTokenResponse{}, err
+		return nil, "", err
 	}
-
-	log.Printf("Response code: %d", res.StatusCode)
-	log.Printf("Response: %s", string(bodyBytes))
 
 	defer res.Body.Close()
 
-	var responseData microsoftAccessTokenResponse
-	err = json.Unmarshal(bodyBytes, &responseData)
+	log.Printf("Azure response code: %d", res.StatusCode)
+	log.Printf("Azure response: %s", string(bodyBytes))
+
+	if res.StatusCode != 200 {
+		return nil, "", fmt.Errorf("received a non 200 status code: %d", res.StatusCode)
+	}
+
+	contentType := res.Header.Get("Content-Type")
+	if contentType == "" {
+		return nil, "", fmt.Errorf("content type header is empty")
+	}
+
+	return bodyBytes, contentType, nil
+}
+
+// https://docs.aws.amazon.com/STS/latest/APIReference/API_AssumeRoleWithWebIdentity.html
+func getAwsAccessToken(ctx context.Context, awsData awsAnnotations, internalToken string, subject string) ([]byte, string, error) {
+	remoteUrl, err := url.Parse("https://sts.amazonaws.com/")
 	if err != nil {
-		return microsoftAccessTokenResponse{}, err
+		return nil, "", err
 	}
 
-	if responseData.AccessToken == "" {
-		return microsoftAccessTokenResponse{}, fmt.Errorf("no access token in response")
+	query := url.Values{}
+	query.Add("Action", "AssumeRoleWithWebIdentity")
+	query.Add("DurationSeconds", "3600")
+	query.Add("RoleSessionName", strings.ReplaceAll(subject, ":", "_"))
+	query.Add("RoleArn", awsData.roleArn)
+	query.Add("Version", "2011-06-15")
+	query.Add("WebIdentityToken", internalToken)
+
+	remoteUrl.RawQuery = query.Encode()
+
+	fmt.Printf("AWS Request: %s\n", remoteUrl.String())
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, remoteUrl.String(), nil)
+	if err != nil {
+		return nil, "", err
 	}
 
-	return responseData, nil
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, "", err
+	}
+
+	bodyBytes, err := io.ReadAll(res.Body)
+	if err != nil {
+		return nil, "", err
+	}
+
+	defer res.Body.Close()
+
+	log.Printf("AWS response code: %d", res.StatusCode)
+	log.Printf("AWS response: %s", string(bodyBytes))
+
+	if res.StatusCode != 200 {
+		return nil, "", fmt.Errorf("received a non 200 status code: %d", res.StatusCode)
+	}
+
+	contentType := res.Header.Get("Content-Type")
+	if contentType == "" {
+		return nil, "", fmt.Errorf("content type header is empty")
+	}
+
+	return bodyBytes, contentType, nil
 }
 
 func getSubjectFromClaims(c *gin.Context) (string, error) {
@@ -231,7 +291,7 @@ func (ts *tokenService) internalAzureTokenHttpHandler(jwks *jwksHandler, issuer 
 			return
 		}
 
-		internalToken, err := newAccessToken(jwks, issuer, subject)
+		internalToken, err := newAccessToken(jwks, issuer, subject, "api://AzureADTokenExchange")
 		if err != nil {
 			c.AbortWithError(http.StatusInternalServerError, err)
 			return
@@ -249,13 +309,49 @@ func (ts *tokenService) internalAzureTokenHttpHandler(jwks *jwksHandler, issuer 
 			return
 		}
 
-		msToken, err := getMicrosoftAccessToken(c.Request.Context(), reqData, internalToken)
+		responseData, contentType, err := getMicrosoftAccessToken(c.Request.Context(), reqData, internalToken)
 		if err != nil {
 			c.AbortWithError(http.StatusInternalServerError, err)
 			return
 		}
 
-		c.JSON(http.StatusOK, msToken)
+		c.Data(http.StatusOK, contentType, responseData)
+	}
+}
+
+func (ts *tokenService) internalAwsTokenHttpHandler(jwks *jwksHandler, issuer string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		subject, err := getSubjectFromClaims(c)
+		if err != nil {
+			c.AbortWithError(http.StatusInternalServerError, err)
+			return
+		}
+
+		internalToken, err := newAccessToken(jwks, issuer, subject, "api://AWSTokenExchange")
+		if err != nil {
+			c.AbortWithError(http.StatusInternalServerError, err)
+			return
+		}
+
+		namespace, serviceAccount, err := getNamespaceAndServiceAccountFromSubject(subject)
+		if err != nil {
+			c.AbortWithError(http.StatusInternalServerError, err)
+			return
+		}
+
+		reqData, err := ts.kr.getAwsAnnotations(c.Request.Context(), namespace, serviceAccount)
+		if err != nil {
+			c.AbortWithError(http.StatusInternalServerError, err)
+			return
+		}
+
+		responseData, contentType, err := getAwsAccessToken(c.Request.Context(), reqData, internalToken, subject)
+		if err != nil {
+			c.AbortWithError(http.StatusInternalServerError, err)
+			return
+		}
+
+		c.Data(http.StatusOK, contentType, responseData)
 	}
 }
 
