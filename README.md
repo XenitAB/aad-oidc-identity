@@ -19,7 +19,9 @@ This proof of concept aims to showcase the new federated identity credentials in
 - [x] Scope discovery through annotation
 - [x] Store JWK in Kubernetes secret
 - [x] Add AWS support
+- [x] Add Google support
 - [ ] Document AWS support
+- [ ] Document Google support
 
 ## AWS NOTES
 
@@ -28,6 +30,30 @@ Get your thumbprint by following this guide: https://docs.aws.amazon.com/IAM/lat
 ```bash
 aws iam create-open-id-connect-provider --url [issuer] --thumbprint-list [thumbprint]
 ```
+
+Request token using:
+
+```shell
+TOKEN=$(cat /var/run/secrets/tokens/oidc-token)
+curl -v -H "Authorization: Bearer ${TOKEN}" -k http://aad-oidc-identity/internal/token/aws
+``` 
+
+## GOOGLE NOTES
+
+When setting up the trust from the external identity to the Service Account, go into IAM > Service Accounts > [service account] > Permissions.
+
+From there, click "Grant Access" and set the "New Principal to:
+
+`principal://iam.googleapis.com/projects/GOOGLE_PROJECT_ID/locations/global/workloadIdentityPools/GOOGLE_POOL_ID/subject/system:serviceaccount:K8S_NAMESPACE:K8S_SERVICE_ACCOUNT_NAME`
+
+Grant it `Workload Identity User` role as well as the roles required to do what it needs.
+
+Request token using:
+
+```shell
+TOKEN=$(cat /var/run/secrets/tokens/oidc-token)
+curl -v -H "Authorization: Bearer ${TOKEN}" -k http://aad-oidc-identity/internal/token/google
+``` 
 
 ## Overview
 

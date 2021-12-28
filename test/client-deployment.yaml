@@ -4,6 +4,11 @@ metadata:
   annotations:
     aad-oidc-identity.xenit.io/client-id: 00000000-0000-0000-0000-000000000000
     aad-oidc-identity.xenit.io/role-arn: arn:aws:iam::123456789:role/test
+    aad-oidc-identity.xenit.io/gcp-service-account: name@projectname.iam.gserviceaccount.com
+    aad-oidc-identity.xenit.io/gcp-project-number: "123456789"
+    aad-oidc-identity.xenit.io/gcp-pool-id: "pool"
+    aad-oidc-identity.xenit.io/gcp-provider-id: "provider"
+    aad-oidc-identity.xenit.io/gcp-scope: "https://www.googleapis.com/auth/cloud-platform"
     #aad-oidc-identity.xenit.io/tenant-id: 00000000-0000-0000-0000-000000000000 # optional, will default to the configured one
     #aad-oidc-identity.xenit.io/scope: https://management.core.windows.net/.default # optional, will default to https://management.core.windows.net/.default
   namespace: default
