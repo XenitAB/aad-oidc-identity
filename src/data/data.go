@@ -1,4 +1,4 @@
-package main
+package data
 
 import (
 	"context"
@@ -14,20 +14,21 @@ import (
 	"strings"
 	"time"
 
+	"github.com/xenitab/aad-oidc-identity/src/config"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 )
 
-type kubeReader struct {
+type DataReader struct {
 	kubeClient           kubernetes.Interface
 	kubeConfig           *rest.Config
 	httpClient           *http.Client
 	defaultAzureTenantId string
 }
 
-func newKubeReader(cfg config, kubeConfigPath string) (*kubeReader, error) {
+func NewDataReader(cfg config.Config, kubeConfigPath string) (*DataReader, error) {
 	config, err := getKubeConfig(kubeConfigPath)
 	if err != nil {
 		return nil, err
@@ -43,15 +44,15 @@ func newKubeReader(cfg config, kubeConfigPath string) (*kubeReader, error) {
 		return nil, err
 	}
 
-	return &kubeReader{
+	return &DataReader{
 		kubeClient:           clientset,
 		kubeConfig:           config,
 		httpClient:           httpClient,
-		defaultAzureTenantId: cfg.DefaultTenantID,
+		defaultAzureTenantId: cfg.AzureDefaultTenantID,
 	}, nil
 }
 
-func (k *kubeReader) getKubeIssuer() (string, error) {
+func (k *DataReader) GetInternalIssuer() (string, error) {
 	baseReqUrl := strings.TrimSuffix(k.kubeConfig.Host, "/")
 	reqUrl := fmt.Sprintf("%s/.well-known/openid-configuration", baseReqUrl)
 	req, err := http.NewRequest(http.MethodGet, reqUrl, nil)
@@ -83,7 +84,7 @@ func (k *kubeReader) getKubeIssuer() (string, error) {
 	return data.Issuer, nil
 }
 
-func (k *kubeReader) getKubeHttpClient() *http.Client {
+func (k *DataReader) GetHttpClient() *http.Client {
 	return k.httpClient
 }
 
@@ -115,7 +116,7 @@ func newHttpClient(restConfig *rest.Config) (*http.Client, error) {
 	return httpClient, nil
 }
 
-func (k *kubeReader) getCertificateFromSecret(ctx context.Context, namespace string, name string) (*rsa.PrivateKey, error) {
+func (k *DataReader) GetCertificateFromSecret(ctx context.Context, namespace string, name string) (*rsa.PrivateKey, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
@@ -172,7 +173,7 @@ func (k *kubeReader) getCertificateFromSecret(ctx context.Context, namespace str
 	return privateKey, nil
 }
 
-func (k *kubeReader) GetData(ctx context.Context, namespace string, name string) (map[string]string, error) {
+func (k *DataReader) GetData(ctx context.Context, namespace string, name string) (map[string]string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 

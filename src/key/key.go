@@ -1,4 +1,4 @@
-package main
+package key
 
 import (
 	"crypto"
@@ -10,14 +10,14 @@ import (
 	"github.com/lestrrat-go/jwx/jwk"
 )
 
-type jwksHandler struct {
+type KeyHandler struct {
 	sync.RWMutex
 	privateKeys []jwk.Key
 	publicKeys  []jwk.Key
 }
 
-func newJwksHandler(rsaKey *rsa.PrivateKey) (*jwksHandler, error) {
-	h := &jwksHandler{
+func NewKeyHandler(rsaKey *rsa.PrivateKey) (*KeyHandler, error) {
+	h := &KeyHandler{
 		privateKeys: []jwk.Key{},
 		publicKeys:  []jwk.Key{},
 	}
@@ -30,7 +30,7 @@ func newJwksHandler(rsaKey *rsa.PrivateKey) (*jwksHandler, error) {
 	return h, nil
 }
 
-func (h *jwksHandler) addJwkFromRsa(rsaKey *rsa.PrivateKey) error {
+func (h *KeyHandler) addJwkFromRsa(rsaKey *rsa.PrivateKey) error {
 	key, err := jwk.New(rsaKey)
 	if err != nil {
 		return err
@@ -87,7 +87,7 @@ func (h *jwksHandler) addJwkFromRsa(rsaKey *rsa.PrivateKey) error {
 	return nil
 }
 
-func (h *jwksHandler) GetPrivateKey() jwk.Key {
+func (h *KeyHandler) GetPrivateKey() jwk.Key {
 	h.RLock()
 
 	lastKeyIndex := len(h.privateKeys) - 1
@@ -98,7 +98,7 @@ func (h *jwksHandler) GetPrivateKey() jwk.Key {
 	return privKey
 }
 
-func (h *jwksHandler) GetPublicKeySet() jwk.Set {
+func (h *KeyHandler) GetPublicKeySet() jwk.Set {
 	keySet := jwk.NewSet()
 
 	h.RLock()

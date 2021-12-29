@@ -1,16 +1,18 @@
-package main
+package webserver
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/lestrrat-go/jwx/jwk"
+	"github.com/xenitab/aad-oidc-identity/src/config"
 	"github.com/xenitab/go-oidc-middleware/oidcgin"
 	oidcoptions "github.com/xenitab/go-oidc-middleware/options"
 )
 
-type tokenService struct {
+type WebServer struct {
 	server *http.Server
 }
 
@@ -18,12 +20,12 @@ type publicKeyGetter interface {
 	GetPublicKeySet() jwk.Set
 }
 
-func NewTokenService(cfg config, kubeIssuer string, httpClient *http.Client, key publicKeyGetter, providerHandlerFuncs map[string]gin.HandlerFunc) (*tokenService, error) {
+func NewWebServer(cfg config.Config, internalIssuer string, httpClient *http.Client, key publicKeyGetter, providerHandlerFuncs map[string]gin.HandlerFunc) (*WebServer, error) {
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.Default()
 
 	oidcMiddleware := oidcgin.New(
-		oidcoptions.WithIssuer(kubeIssuer),
+		oidcoptions.WithIssuer(internalIssuer),
 		oidcoptions.WithRequiredAudience(cfg.TokenAudience),
 		oidcoptions.WithLazyLoadJwks(true),
 		oidcoptions.WithHttpClient(httpClient),
@@ -46,9 +48,17 @@ func NewTokenService(cfg config, kubeIssuer string, httpClient *http.Client, key
 		Handler: r,
 	}
 
-	return &tokenService{
+	return &WebServer{
 		server: srv,
 	}, nil
+}
+
+func (srv *WebServer) ListenAndServe() error {
+	return srv.server.ListenAndServe()
+}
+
+func (srv *WebServer) Shutdown(ctx context.Context) error {
+	return srv.server.Shutdown(ctx)
 }
 
 type metadata struct {
@@ -69,11 +79,11 @@ type metadata struct {
 	SubjectTypesSupported            []string `json:"subject_types_supported"`
 }
 
-func metadataHttpHandler(issuer string) gin.HandlerFunc {
+func metadataHttpHandler(externalIssuer string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		data := metadata{
-			Issuer:                           issuer,
-			JwksUri:                          fmt.Sprintf("%s/jwks", issuer),
+			Issuer:                           externalIssuer,
+			JwksUri:                          fmt.Sprintf("%s/jwks", externalIssuer),
 			ResponseTypesSupported:           []string{"id_token"},
 			IdTokenSigningAlgValuesSupported: []string{"RS256"},
 			SubjectTypesSupported:            []string{"public", "pairwise"},
