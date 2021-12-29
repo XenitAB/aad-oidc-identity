@@ -13,7 +13,62 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-type googleAnnotations struct {
+type googleProvider struct {
+	getData              getDataFn
+	defaultProjectNumber string
+	defaultPoolId        string
+	defaultProviderId    string
+	defaultScope         string
+}
+
+func (p *googleProvider) Validate() error {
+	if p.getData == nil {
+		return fmt.Errorf("googleProvider getData is nil")
+	}
+
+	// FIXME: Configure defaults
+	// if p.defaultProjectNumber == "" {
+	// 	return fmt.Errorf("googleProvider defaultProjectNumber is empty")
+	// }
+
+	// if p.defaultPoolId == "" {
+	// 	return fmt.Errorf("googleProvider defaultPoolId is empty")
+	// }
+
+	// if p.defaultProviderId == "" {
+	// 	return fmt.Errorf("googleProvider defaultProviderId is empty")
+	// }
+
+	// if p.defaultScope == "" {
+	// 	return fmt.Errorf("googleProvider defaultScope is empty")
+	// }
+
+	return nil
+}
+
+const (
+	googleGSAAnnotationKey           = "aad-oidc-identity.xenit.io/gcp-service-account"
+	googleProjectNumberAnnotationKey = "aad-oidc-identity.xenit.io/gcp-project-number"
+	googlePoolIdAnnotationKey        = "aad-oidc-identity.xenit.io/gcp-pool-id"
+	googleProviderIdAnnotationKey    = "aad-oidc-identity.xenit.io/gcp-provider-id"
+	googleScopeAnnotationKey         = "aad-oidc-identity.xenit.io/gcp-scope"
+)
+
+func newGoogleProvider(getData getDataFn) (*googleProvider, error) {
+	p := &googleProvider{
+		getData:      getData,
+		defaultScope: "https://www.googleapis.com/auth/cloud-platform",
+	}
+
+	err := p.Validate()
+	if err != nil {
+		return nil, err
+	}
+
+	return p, nil
+}
+
+type googleData struct {
 	gsa           string
 	projectNumber string
 	poolId        string
@@ -21,62 +76,62 @@ type googleAnnotations struct {
 	scope         string
 }
 
-func (a *googleAnnotations) Validate() error {
-	if a.gsa == "" {
+func (d *googleData) Validate() error {
+	if d.gsa == "" {
 		return fmt.Errorf("google service account (gsa) is empty")
 	}
 
-	if a.projectNumber == "" {
+	if d.projectNumber == "" {
 		return fmt.Errorf("google projectNumber is empty")
 	}
 
-	if a.poolId == "" {
+	if d.poolId == "" {
 		return fmt.Errorf("google poolId is empty")
 	}
 
-	if a.providerId == "" {
+	if d.providerId == "" {
 		return fmt.Errorf("google providerId is empty")
 	}
 
-	if a.scope == "" {
+	if d.scope == "" {
 		return fmt.Errorf("google scope is empty")
 	}
 
 	return nil
 }
 
-func (k *kubeReader) getGoogleAnnotations(ctx context.Context, namespace string, name string) (googleAnnotations, error) {
-	annotations, err := k.getServiceAccountAnnotations(ctx, namespace, name)
+func (p *googleProvider) getProviderData(ctx context.Context, namespace string, name string) (googleData, error) {
+	annotations, err := p.getData(ctx, namespace, name)
 	if err != nil {
-		return googleAnnotations{}, err
+		return googleData{}, err
 	}
 
 	gsa, ok := annotations[googleGSAAnnotationKey]
 	if !ok {
-		return googleAnnotations{}, fmt.Errorf("could not find annotation (%s) on service account", googleGSAAnnotationKey)
+		return googleData{}, fmt.Errorf("could not find annotation (%s) on service account", googleGSAAnnotationKey)
 	}
 
 	projectNumber, ok := annotations[googleProjectNumberAnnotationKey]
 	if !ok {
-		projectNumber = k.defaultGoogleProjectNumber
+		projectNumber = p.defaultProjectNumber
 	}
 
 	poolId, ok := annotations[googlePoolIdAnnotationKey]
 	if !ok {
-		poolId = k.defaultGooglePoolId
+		poolId = p.defaultPoolId
 	}
 
 	providerId, ok := annotations[googleProviderIdAnnotationKey]
 	if !ok {
-		poolId = k.defaultGoogleProviderId
+		poolId = p.defaultProviderId
 	}
 
 	scope, ok := annotations[googleScopeAnnotationKey]
 	if !ok {
-		poolId = googleDefaultScope
+		poolId = p.defaultScope
 	}
 
-	ga := googleAnnotations{
+	data := googleData{
 		gsa:           gsa,
 		projectNumber: projectNumber,
 		poolId:        poolId,
@@ -84,16 +139,16 @@ func (k *kubeReader) getGoogleAnnotations(ctx context.Context, namespace string,
 		scope:         scope,
 	}
 
-	err = ga.Validate()
+	err = data.Validate()
 	if err != nil {
-		return googleAnnotations{}, err
+		return googleData{}, err
 	}
 
-	return ga, nil
+	return data, nil
 }
 
 // https://cloud.google.com/iam/docs/using-workload-identity-federation#authenticating_by_using_the_rest_api
-func getGoogleAccessToken(ctx context.Context, googleData googleAnnotations, internalToken string, subject string, aud string) ([]byte, string, error) {
+func (p *googleProvider) getAccessToken(ctx context.Context, googleData googleData, internalToken string, subject string, aud string) ([]byte, string, error) {
 	stsReqBody := struct {
 		Audience           string `json:"audience"`
 		GrantType          string `json:"grantType"`
@@ -198,7 +253,7 @@ func getGoogleAccessToken(ctx context.Context, googleData googleAnnotations, int
 	return bodyBytes, contentType, nil
 }
 
-func (ts *tokenService) internalGoogleTokenHttpHandler(jwks *jwksHandler, issuer string) gin.HandlerFunc {
+func (p *googleProvider) httpHandler(jwks *jwksHandler, issuer string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		subject, err := getSubjectFromClaims(c)
 		if err != nil {
@@ -212,7 +267,7 @@ func (ts *tokenService) internalGoogleTokenHttpHandler(jwks *jwksHandler, issuer
 			return
 		}
 
-		reqData, err := ts.kr.getGoogleAnnotations(c.Request.Context(), namespace, serviceAccount)
+		reqData, err := p.getProviderData(c.Request.Context(), namespace, serviceAccount)
 		if err != nil {
 			c.AbortWithError(http.StatusInternalServerError, err)
 			return
@@ -226,7 +281,7 @@ func (ts *tokenService) internalGoogleTokenHttpHandler(jwks *jwksHandler, issuer
 			return
 		}
 
-		responseData, contentType, err := getGoogleAccessToken(c.Request.Context(), reqData, internalToken, subject, audience)
+		responseData, contentType, err := p.getAccessToken(c.Request.Context(), reqData, internalToken, subject, audience)
 		if err != nil {
 			c.AbortWithError(http.StatusInternalServerError, err)
 			return

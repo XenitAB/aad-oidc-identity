@@ -11,28 +11,71 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-type awsAnnotations struct {
+const (
+	awsRoleArnAnnotationKey = "aad-oidc-identity.xenit.io/role-arn"
+)
+
+type awsProvider struct {
+	getData getDataFn
+}
+
+func (p *awsProvider) Validate() error {
+	if p.getData == nil {
+		return fmt.Errorf("awsProvider getData is nil")
+	}
+
+	return nil
+}
+
+func newAwsProvider(getData getDataFn) (*awsProvider, error) {
+	p := &awsProvider{
+		getData: getData,
+	}
+
+	err := p.Validate()
+	if err != nil {
+		return nil, err
+	}
+
+	return p, nil
+}
+
+type awsData struct {
 	roleArn string
 }
 
-func (k *kubeReader) getAwsAnnotations(ctx context.Context, namespace string, name string) (awsAnnotations, error) {
-	annotations, err := k.getServiceAccountAnnotations(ctx, namespace, name)
+func (a *awsData) Validate() error {
+	if a.roleArn == "" {
+		return fmt.Errorf("aws roleArn is empty")
+	}
+	return nil
+}
+
+func (p *awsProvider) getProviderData(ctx context.Context, namespace string, name string) (awsData, error) {
+	annotations, err := p.getData(ctx, namespace, name)
 	if err != nil {
-		return awsAnnotations{}, err
+		return awsData{}, err
 	}
 
 	roleArn, ok := annotations[awsRoleArnAnnotationKey]
 	if !ok {
-		return awsAnnotations{}, fmt.Errorf("could not find annotation (%s) on service account", awsRoleArnAnnotationKey)
+		return awsData{}, fmt.Errorf("could not find annotation (%s) on service account", awsRoleArnAnnotationKey)
 	}
 
-	return awsAnnotations{
+	data := awsData{
 		roleArn: roleArn,
-	}, nil
+	}
+
+	err = data.Validate()
+	if err != nil {
+		return awsData{}, err
+	}
+
+	return data, nil
 }
 
 // https://docs.aws.amazon.com/STS/latest/APIReference/API_AssumeRoleWithWebIdentity.html
-func getAwsAccessToken(ctx context.Context, awsData awsAnnotations, internalToken string, subject string) ([]byte, string, error) {
+func (p *awsProvider) getAccessToken(ctx context.Context, awsData awsData, internalToken string, subject string) ([]byte, string, error) {
 	remoteUrl, err := url.Parse("https://sts.amazonaws.com/")
 	if err != nil {
 		return nil, "", err
@@ -77,7 +120,7 @@ func getAwsAccessToken(ctx context.Context, awsData awsAnnotations, internalToke
 	return bodyBytes, contentType, nil
 }
 
-func (ts *tokenService) internalAwsTokenHttpHandler(jwks *jwksHandler, issuer string) gin.HandlerFunc {
+func (p *awsProvider) httpHandler(jwks *jwksHandler, issuer string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		subject, err := getSubjectFromClaims(c)
 		if err != nil {
@@ -97,13 +140,13 @@ func (ts *tokenService) internalAwsTokenHttpHandler(jwks *jwksHandler, issuer st
 			return
 		}
 
-		reqData, err := ts.kr.getAwsAnnotations(c.Request.Context(), namespace, serviceAccount)
+		reqData, err := p.getProviderData(c.Request.Context(), namespace, serviceAccount)
 		if err != nil {
 			c.AbortWithError(http.StatusInternalServerError, err)
 			return
 		}
 
-		responseData, contentType, err := getAwsAccessToken(c.Request.Context(), reqData, internalToken, subject)
+		responseData, contentType, err := p.getAccessToken(c.Request.Context(), reqData, internalToken, subject)
 		if err != nil {
 			c.AbortWithError(http.StatusInternalServerError, err)
 			return

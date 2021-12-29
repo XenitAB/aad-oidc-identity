@@ -11,42 +11,110 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-type azureAnnotations struct {
+const (
+	azureClientIdAnnotationKey = "aad-oidc-identity.xenit.io/client-id"
+	azureTenantIdAnnotationKey = "aad-oidc-identity.xenit.io/tenant-id"
+	azureScopeAnnotationKey    = "aad-oidc-identity.xenit.io/scope"
+)
+
+type getDataFn func(ctx context.Context, namespace string, name string) (map[string]string, error)
+
+type azureProvider struct {
+	getData         getDataFn
+	defaultTenantId string
+	defaultScope    string
+}
+
+func (p *azureProvider) Validate() error {
+	if p.getData == nil {
+		return fmt.Errorf("azureProvider getData is nil")
+	}
+
+	if p.defaultTenantId == "" {
+		return fmt.Errorf("azureProvider defaultTenantId is empty")
+	}
+
+	if p.defaultScope == "" {
+		return fmt.Errorf("azureProvider defaultScope is empty")
+	}
+
+	return nil
+}
+
+func newAzureProvider(getData getDataFn, tenantId string) (*azureProvider, error) {
+	p := &azureProvider{
+		getData:         getData,
+		defaultTenantId: tenantId,
+		defaultScope:    "https://management.core.windows.net/.default",
+	}
+
+	err := p.Validate()
+	if err != nil {
+		return nil, err
+	}
+
+	return p, nil
+}
+
+type azureData struct {
 	clientId string
 	tenantId string
 	scope    string
 }
 
-func (k *kubeReader) getAzureAnnotations(ctx context.Context, namespace string, name string) (azureAnnotations, error) {
-	annotations, err := k.getServiceAccountAnnotations(ctx, namespace, name)
+func (d *azureData) Validate() error {
+	if d.clientId == "" {
+		return fmt.Errorf("azure clientId is empty")
+	}
+
+	if d.tenantId == "" {
+		return fmt.Errorf("azure tenantId is empty")
+	}
+
+	if d.scope == "" {
+		return fmt.Errorf("azure scope is empty")
+	}
+
+	return nil
+}
+
+func (p *azureProvider) getProviderData(ctx context.Context, namespace string, name string) (azureData, error) {
+	annotations, err := p.getData(ctx, namespace, name)
 	if err != nil {
-		return azureAnnotations{}, err
+		return azureData{}, err
 	}
 
 	clientId, ok := annotations[azureClientIdAnnotationKey]
 	if !ok {
-		return azureAnnotations{}, fmt.Errorf("could not find annotation (%s) on service account", azureClientIdAnnotationKey)
+		return azureData{}, fmt.Errorf("could not find annotation (%s) on service account", azureClientIdAnnotationKey)
 	}
 
 	tenantId, ok := annotations[azureTenantIdAnnotationKey]
 	if !ok {
-		tenantId = k.defaultAzureTenantId
+		tenantId = p.defaultTenantId
 	}
 
 	scope, ok := annotations[azureScopeAnnotationKey]
 	if !ok {
-		scope = azureDefaultScope
+		scope = p.defaultScope
 	}
 
-	return azureAnnotations{
+	data := azureData{
 		clientId: clientId,
 		tenantId: tenantId,
 		scope:    scope,
-	}, nil
+	}
+
+	err = data.Validate()
+	if err != nil {
+		return azureData{}, err
+	}
+
+	return data, nil
 }
 
 // https://docs.microsoft.com/en-us/azure/active-directory/develop/v2-oauth2-client-creds-grant-flow#third-case-access-token-request-with-a-federated-credential
-func getMicrosoftAccessToken(ctx context.Context, azureData azureAnnotations, internalToken string) ([]byte, string, error) {
+func (p *azureProvider) getAccessToken(ctx context.Context, azureData azureData, internalToken string) ([]byte, string, error) {
 	data := url.Values{}
 	data.Add("scope", azureData.scope)
 	data.Add("client_id", azureData.clientId)
@@ -90,7 +158,7 @@ func getMicrosoftAccessToken(ctx context.Context, azureData azureAnnotations, in
 	return bodyBytes, contentType, nil
 }
 
-func (ts *tokenService) internalAzureTokenHttpHandler(jwks *jwksHandler, issuer string) gin.HandlerFunc {
+func (p *azureProvider) httpHandler(jwks *jwksHandler, issuer string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		subject, err := getSubjectFromClaims(c)
 		if err != nil {
@@ -110,13 +178,13 @@ func (ts *tokenService) internalAzureTokenHttpHandler(jwks *jwksHandler, issuer 
 			return
 		}
 
-		reqData, err := ts.kr.getAzureAnnotations(c.Request.Context(), namespace, serviceAccount)
+		reqData, err := p.getProviderData(c.Request.Context(), namespace, serviceAccount)
 		if err != nil {
 			c.AbortWithError(http.StatusInternalServerError, err)
 			return
 		}
 
-		responseData, contentType, err := getMicrosoftAccessToken(c.Request.Context(), reqData, internalToken)
+		responseData, contentType, err := p.getAccessToken(c.Request.Context(), reqData, internalToken)
 		if err != nil {
 			c.AbortWithError(http.StatusInternalServerError, err)
 			return

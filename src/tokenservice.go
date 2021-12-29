@@ -20,7 +20,9 @@ type tokenService struct {
 	kr     *kubeReader
 }
 
-func NewTokenService(cfg config, kr *kubeReader) (*tokenService, error) {
+type providerHttpHandler func(jwks *jwksHandler, issuer string) gin.HandlerFunc
+
+func NewTokenService(cfg config, kr *kubeReader, providerHttpHandlers map[string]providerHttpHandler) (*tokenService, error) {
 	ts := &tokenService{
 		kr: kr,
 	}
@@ -55,9 +57,10 @@ func NewTokenService(cfg config, kr *kubeReader) (*tokenService, error) {
 		return nil, err
 	}
 
-	internal.GET("/token/azure", ts.internalAzureTokenHttpHandler(jwks, cfg.ExternalIssuer))
-	internal.GET("/token/aws", ts.internalAwsTokenHttpHandler(jwks, cfg.ExternalIssuer))
-	internal.GET("/token/google", ts.internalGoogleTokenHttpHandler(jwks, cfg.ExternalIssuer))
+	for k, v := range providerHttpHandlers {
+		internal.GET(fmt.Sprintf("/token/%s", k), v(jwks, cfg.ExternalIssuer))
+	}
+
 	external.GET("/.well-known/openid-configuration", metadataHttpHandler(cfg.ExternalIssuer))
 	external.GET("/jwks", jwksHttpHandler(jwks))
 

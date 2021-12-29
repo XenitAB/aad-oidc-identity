@@ -34,7 +34,12 @@ func run(ctx context.Context, cfg config) error {
 		return err
 	}
 
-	ts, err := NewTokenService(cfg, kr)
+	providerHttpHandlers, err := getProviderHttpHandlers(cfg, kr.getServiceAccountAnnotations)
+	if err != nil {
+		return err
+	}
+
+	ts, err := NewTokenService(cfg, kr, providerHttpHandlers)
 	if err != nil {
 		return err
 	}
@@ -83,4 +88,27 @@ func run(ctx context.Context, cfg config) error {
 	}
 
 	return nil
+}
+
+func getProviderHttpHandlers(cfg config, getData getDataFn) (map[string]providerHttpHandler, error) {
+	azure, err := newAzureProvider(getData, cfg.DefaultTenantID)
+	if err != nil {
+		return nil, err
+	}
+
+	aws, err := newAwsProvider(getData)
+	if err != nil {
+		return nil, err
+	}
+
+	google, err := newGoogleProvider(getData)
+	if err != nil {
+		return nil, err
+	}
+
+	return map[string]providerHttpHandler{
+		"azure":  azure.httpHandler,
+		"aws":    aws.httpHandler,
+		"google": google.httpHandler,
+	}, nil
 }

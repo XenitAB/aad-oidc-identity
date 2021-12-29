@@ -20,20 +20,6 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 )
 
-const (
-	azureClientIdAnnotationKey       = "aad-oidc-identity.xenit.io/client-id"
-	azureTenantIdAnnotationKey       = "aad-oidc-identity.xenit.io/tenant-id"
-	azureScopeAnnotationKey          = "aad-oidc-identity.xenit.io/scope"
-	azureDefaultScope                = "https://management.core.windows.net/.default"
-	awsRoleArnAnnotationKey          = "aad-oidc-identity.xenit.io/role-arn"
-	googleGSAAnnotationKey           = "aad-oidc-identity.xenit.io/gcp-service-account"
-	googleProjectNumberAnnotationKey = "aad-oidc-identity.xenit.io/gcp-project-number"
-	googlePoolIdAnnotationKey        = "aad-oidc-identity.xenit.io/gcp-pool-id"
-	googleProviderIdAnnotationKey    = "aad-oidc-identity.xenit.io/gcp-provider-id"
-	googleScopeAnnotationKey         = "aad-oidc-identity.xenit.io/gcp-scope"
-	googleDefaultScope               = "https://www.googleapis.com/auth/cloud-platform"
-)
-
 type kubeReader struct {
 	kubeClient           kubernetes.Interface
 	kubeConfig           *rest.Config
