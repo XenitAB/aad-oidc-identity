@@ -1,4 +1,4 @@
-package main
+package provider
 
 import (
 	"bytes"
@@ -13,17 +13,30 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-type googleProvider struct {
-	getData              getDataFn
+const (
+	googleGSAAnnotationKey           = "aad-oidc-identity.xenit.io/gcp-service-account"
+	googleProjectNumberAnnotationKey = "aad-oidc-identity.xenit.io/gcp-project-number"
+	googlePoolIdAnnotationKey        = "aad-oidc-identity.xenit.io/gcp-pool-id"
+	googleProviderIdAnnotationKey    = "aad-oidc-identity.xenit.io/gcp-provider-id"
+	googleScopeAnnotationKey         = "aad-oidc-identity.xenit.io/gcp-scope"
+)
+
+type GoogleProvider struct {
+	data                 dataGetter
+	key                  privateKeyGetter
 	defaultProjectNumber string
 	defaultPoolId        string
 	defaultProviderId    string
 	defaultScope         string
 }
 
-func (p *googleProvider) Validate() error {
-	if p.getData == nil {
-		return fmt.Errorf("googleProvider getData is nil")
+func (p *GoogleProvider) validate() error {
+	if p.data == nil {
+		return fmt.Errorf("googleProvider data is nil")
+	}
+
+	if p.key == nil {
+		return fmt.Errorf("googleProvider key is nil")
 	}
 
 	// FIXME: Configure defaults
@@ -46,21 +59,14 @@ func (p *googleProvider) Validate() error {
 	return nil
 }
 
-const (
-	googleGSAAnnotationKey           = "aad-oidc-identity.xenit.io/gcp-service-account"
-	googleProjectNumberAnnotationKey = "aad-oidc-identity.xenit.io/gcp-project-number"
-	googlePoolIdAnnotationKey        = "aad-oidc-identity.xenit.io/gcp-pool-id"
-	googleProviderIdAnnotationKey    = "aad-oidc-identity.xenit.io/gcp-provider-id"
-	googleScopeAnnotationKey         = "aad-oidc-identity.xenit.io/gcp-scope"
-)
-
-func newGoogleProvider(getData getDataFn) (*googleProvider, error) {
-	p := &googleProvider{
-		getData:      getData,
+func NewGoogleProvider(data dataGetter, key privateKeyGetter) (*GoogleProvider, error) {
+	p := &GoogleProvider{
+		data:         data,
+		key:          key,
 		defaultScope: "https://www.googleapis.com/auth/cloud-platform",
 	}
 
-	err := p.Validate()
+	err := p.validate()
 	if err != nil {
 		return nil, err
 	}
@@ -76,7 +82,7 @@ type googleData struct {
 	scope         string
 }
 
-func (d *googleData) Validate() error {
+func (d *googleData) validate() error {
 	if d.gsa == "" {
 		return fmt.Errorf("google service account (gsa) is empty")
 	}
@@ -100,8 +106,8 @@ func (d *googleData) Validate() error {
 	return nil
 }
 
-func (p *googleProvider) getProviderData(ctx context.Context, namespace string, name string) (googleData, error) {
-	annotations, err := p.getData(ctx, namespace, name)
+func (p *GoogleProvider) getProviderData(ctx context.Context, namespace string, name string) (googleData, error) {
+	annotations, err := p.data.GetData(ctx, namespace, name)
 	if err != nil {
 		return googleData{}, err
 	}
@@ -139,7 +145,7 @@ func (p *googleProvider) getProviderData(ctx context.Context, namespace string, 
 		scope:         scope,
 	}
 
-	err = data.Validate()
+	err = data.validate()
 	if err != nil {
 		return googleData{}, err
 	}
@@ -148,7 +154,7 @@ func (p *googleProvider) getProviderData(ctx context.Context, namespace string, 
 }
 
 // https://cloud.google.com/iam/docs/using-workload-identity-federation#authenticating_by_using_the_rest_api
-func (p *googleProvider) getAccessToken(ctx context.Context, googleData googleData, internalToken string, subject string, aud string) ([]byte, string, error) {
+func (p *GoogleProvider) getAccessToken(ctx context.Context, googleData googleData, internalToken string, subject string, aud string) ([]byte, string, error) {
 	stsReqBody := struct {
 		Audience           string `json:"audience"`
 		GrantType          string `json:"grantType"`
@@ -253,7 +259,7 @@ func (p *googleProvider) getAccessToken(ctx context.Context, googleData googleDa
 	return bodyBytes, contentType, nil
 }
 
-func (p *googleProvider) httpHandler(jwks *jwksHandler, issuer string) gin.HandlerFunc {
+func (p *GoogleProvider) NewHandlerFunc(issuer string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		subject, err := getSubjectFromClaims(c)
 		if err != nil {
@@ -275,7 +281,7 @@ func (p *googleProvider) httpHandler(jwks *jwksHandler, issuer string) gin.Handl
 
 		audience := fmt.Sprintf("https://iam.googleapis.com/projects/%s/locations/global/workloadIdentityPools/%s/providers/%s", reqData.projectNumber, reqData.poolId, reqData.providerId)
 
-		internalToken, err := newAccessToken(jwks, issuer, subject, audience)
+		internalToken, err := newAccessToken(p.key, issuer, subject, audience)
 		if err != nil {
 			c.AbortWithError(http.StatusInternalServerError, err)
 			return

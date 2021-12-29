@@ -87,7 +87,7 @@ func (h *jwksHandler) addJwkFromRsa(rsaKey *rsa.PrivateKey) error {
 	return nil
 }
 
-func (h *jwksHandler) getPrivateKey() jwk.Key {
+func (h *jwksHandler) GetPrivateKey() jwk.Key {
 	h.RLock()
 
 	lastKeyIndex := len(h.privateKeys) - 1
@@ -98,7 +98,7 @@ func (h *jwksHandler) getPrivateKey() jwk.Key {
 	return privKey
 }
 
-func (h *jwksHandler) getPublicKeySet() jwk.Set {
+func (h *jwksHandler) GetPublicKeySet() jwk.Set {
 	keySet := jwk.NewSet()
 
 	h.RLock()

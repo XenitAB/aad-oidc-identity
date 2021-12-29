@@ -1,4 +1,4 @@
-package main
+package provider
 
 import (
 	"context"
@@ -17,17 +17,20 @@ const (
 	azureScopeAnnotationKey    = "aad-oidc-identity.xenit.io/scope"
 )
 
-type getDataFn func(ctx context.Context, namespace string, name string) (map[string]string, error)
-
-type azureProvider struct {
-	getData         getDataFn
+type AzureProvider struct {
+	data            dataGetter
+	key             privateKeyGetter
 	defaultTenantId string
 	defaultScope    string
 }
 
-func (p *azureProvider) Validate() error {
-	if p.getData == nil {
-		return fmt.Errorf("azureProvider getData is nil")
+func (p *AzureProvider) validate() error {
+	if p.data == nil {
+		return fmt.Errorf("azureProvider data is nil")
+	}
+
+	if p.key == nil {
+		return fmt.Errorf("azureProvider key is nil")
 	}
 
 	if p.defaultTenantId == "" {
@@ -41,14 +44,15 @@ func (p *azureProvider) Validate() error {
 	return nil
 }
 
-func newAzureProvider(getData getDataFn, tenantId string) (*azureProvider, error) {
-	p := &azureProvider{
-		getData:         getData,
+func NewAzureProvider(data dataGetter, key privateKeyGetter, tenantId string) (*AzureProvider, error) {
+	p := &AzureProvider{
+		data:            data,
+		key:             key,
 		defaultTenantId: tenantId,
 		defaultScope:    "https://management.core.windows.net/.default",
 	}
 
-	err := p.Validate()
+	err := p.validate()
 	if err != nil {
 		return nil, err
 	}
@@ -62,7 +66,7 @@ type azureData struct {
 	scope    string
 }
 
-func (d *azureData) Validate() error {
+func (d *azureData) validate() error {
 	if d.clientId == "" {
 		return fmt.Errorf("azure clientId is empty")
 	}
@@ -78,8 +82,8 @@ func (d *azureData) Validate() error {
 	return nil
 }
 
-func (p *azureProvider) getProviderData(ctx context.Context, namespace string, name string) (azureData, error) {
-	annotations, err := p.getData(ctx, namespace, name)
+func (p *AzureProvider) getProviderData(ctx context.Context, namespace string, name string) (azureData, error) {
+	annotations, err := p.data.GetData(ctx, namespace, name)
 	if err != nil {
 		return azureData{}, err
 	}
@@ -105,7 +109,7 @@ func (p *azureProvider) getProviderData(ctx context.Context, namespace string, n
 		scope:    scope,
 	}
 
-	err = data.Validate()
+	err = data.validate()
 	if err != nil {
 		return azureData{}, err
 	}
@@ -114,7 +118,7 @@ func (p *azureProvider) getProviderData(ctx context.Context, namespace string, n
 }
 
 // https://docs.microsoft.com/en-us/azure/active-directory/develop/v2-oauth2-client-creds-grant-flow#third-case-access-token-request-with-a-federated-credential
-func (p *azureProvider) getAccessToken(ctx context.Context, azureData azureData, internalToken string) ([]byte, string, error) {
+func (p *AzureProvider) getAccessToken(ctx context.Context, azureData azureData, internalToken string) ([]byte, string, error) {
 	data := url.Values{}
 	data.Add("scope", azureData.scope)
 	data.Add("client_id", azureData.clientId)
@@ -158,7 +162,7 @@ func (p *azureProvider) getAccessToken(ctx context.Context, azureData azureData,
 	return bodyBytes, contentType, nil
 }
 
-func (p *azureProvider) httpHandler(jwks *jwksHandler, issuer string) gin.HandlerFunc {
+func (p *AzureProvider) NewHandlerFunc(issuer string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		subject, err := getSubjectFromClaims(c)
 		if err != nil {
@@ -166,7 +170,7 @@ func (p *azureProvider) httpHandler(jwks *jwksHandler, issuer string) gin.Handle
 			return
 		}
 
-		internalToken, err := newAccessToken(jwks, issuer, subject, "api://AzureADTokenExchange")
+		internalToken, err := newAccessToken(p.key, issuer, subject, "api://AzureADTokenExchange")
 		if err != nil {
 			c.AbortWithError(http.StatusInternalServerError, err)
 			return

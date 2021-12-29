@@ -10,6 +10,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gin-gonic/gin"
+	"github.com/xenitab/aad-oidc-identity/src/provider"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -29,17 +31,34 @@ func main() {
 }
 
 func run(ctx context.Context, cfg config) error {
-	kr, err := newKubeReader(cfg, "")
+	k, err := newKubeReader(cfg, "")
 	if err != nil {
 		return err
 	}
 
-	providerHttpHandlers, err := getProviderHttpHandlers(cfg, kr.getServiceAccountAnnotations)
+	rsaKey, err := k.getCertificateFromSecret(context.Background(), "default", "aad-oidc-identity-jwks")
 	if err != nil {
 		return err
 	}
 
-	ts, err := NewTokenService(cfg, kr, providerHttpHandlers)
+	jwks, err := newJwksHandler(rsaKey)
+	if err != nil {
+		return err
+	}
+
+	issuer, err := k.getKubeIssuer()
+	if err != nil {
+		return err
+	}
+
+	httpClient := k.getKubeHttpClient()
+
+	providerHandlerFuncs, err := newProviderHandlerFuncs(cfg, k, jwks, issuer)
+	if err != nil {
+		return err
+	}
+
+	ts, err := NewTokenService(cfg, issuer, httpClient, jwks, providerHandlerFuncs)
 	if err != nil {
 		return err
 	}
@@ -90,25 +109,25 @@ func run(ctx context.Context, cfg config) error {
 	return nil
 }
 
-func getProviderHttpHandlers(cfg config, getData getDataFn) (map[string]providerHttpHandler, error) {
-	azure, err := newAzureProvider(getData, cfg.DefaultTenantID)
+func newProviderHandlerFuncs(cfg config, k *kubeReader, jwks *jwksHandler, issuer string) (map[string]gin.HandlerFunc, error) {
+	azure, err := provider.NewAzureProvider(k, jwks, cfg.DefaultTenantID)
 	if err != nil {
 		return nil, err
 	}
 
-	aws, err := newAwsProvider(getData)
+	aws, err := provider.NewAwsProvider(k, jwks)
 	if err != nil {
 		return nil, err
 	}
 
-	google, err := newGoogleProvider(getData)
+	google, err := provider.NewGoogleProvider(k, jwks)
 	if err != nil {
 		return nil, err
 	}
 
-	return map[string]providerHttpHandler{
-		"azure":  azure.httpHandler,
-		"aws":    aws.httpHandler,
-		"google": google.httpHandler,
+	return map[string]gin.HandlerFunc{
+		"azure":  azure.NewHandlerFunc(issuer),
+		"aws":    aws.NewHandlerFunc(issuer),
+		"google": google.NewHandlerFunc(issuer),
 	}, nil
 }

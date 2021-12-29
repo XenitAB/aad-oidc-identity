@@ -1,4 +1,4 @@
-package main
+package provider
 
 import (
 	"context"
@@ -15,24 +15,30 @@ const (
 	awsRoleArnAnnotationKey = "aad-oidc-identity.xenit.io/role-arn"
 )
 
-type awsProvider struct {
-	getData getDataFn
+type AwsProvider struct {
+	data dataGetter
+	key  privateKeyGetter
 }
 
-func (p *awsProvider) Validate() error {
-	if p.getData == nil {
-		return fmt.Errorf("awsProvider getData is nil")
+func (p *AwsProvider) validate() error {
+	if p.data == nil {
+		return fmt.Errorf("awsProvider data is nil")
+	}
+
+	if p.key == nil {
+		return fmt.Errorf("awsProvider key is nil")
 	}
 
 	return nil
 }
 
-func newAwsProvider(getData getDataFn) (*awsProvider, error) {
-	p := &awsProvider{
-		getData: getData,
+func NewAwsProvider(data dataGetter, key privateKeyGetter) (*AwsProvider, error) {
+	p := &AwsProvider{
+		data: data,
+		key:  key,
 	}
 
-	err := p.Validate()
+	err := p.validate()
 	if err != nil {
 		return nil, err
 	}
@@ -44,15 +50,15 @@ type awsData struct {
 	roleArn string
 }
 
-func (a *awsData) Validate() error {
+func (a *awsData) validate() error {
 	if a.roleArn == "" {
 		return fmt.Errorf("aws roleArn is empty")
 	}
 	return nil
 }
 
-func (p *awsProvider) getProviderData(ctx context.Context, namespace string, name string) (awsData, error) {
-	annotations, err := p.getData(ctx, namespace, name)
+func (p *AwsProvider) getProviderData(ctx context.Context, namespace string, name string) (awsData, error) {
+	annotations, err := p.data.GetData(ctx, namespace, name)
 	if err != nil {
 		return awsData{}, err
 	}
@@ -66,7 +72,7 @@ func (p *awsProvider) getProviderData(ctx context.Context, namespace string, nam
 		roleArn: roleArn,
 	}
 
-	err = data.Validate()
+	err = data.validate()
 	if err != nil {
 		return awsData{}, err
 	}
@@ -75,7 +81,7 @@ func (p *awsProvider) getProviderData(ctx context.Context, namespace string, nam
 }
 
 // https://docs.aws.amazon.com/STS/latest/APIReference/API_AssumeRoleWithWebIdentity.html
-func (p *awsProvider) getAccessToken(ctx context.Context, awsData awsData, internalToken string, subject string) ([]byte, string, error) {
+func (p *AwsProvider) getAccessToken(ctx context.Context, awsData awsData, internalToken string, subject string) ([]byte, string, error) {
 	remoteUrl, err := url.Parse("https://sts.amazonaws.com/")
 	if err != nil {
 		return nil, "", err
@@ -120,7 +126,7 @@ func (p *awsProvider) getAccessToken(ctx context.Context, awsData awsData, inter
 	return bodyBytes, contentType, nil
 }
 
-func (p *awsProvider) httpHandler(jwks *jwksHandler, issuer string) gin.HandlerFunc {
+func (p *AwsProvider) NewHandlerFunc(issuer string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		subject, err := getSubjectFromClaims(c)
 		if err != nil {
@@ -128,7 +134,7 @@ func (p *awsProvider) httpHandler(jwks *jwksHandler, issuer string) gin.HandlerF
 			return
 		}
 
-		internalToken, err := newAccessToken(jwks, issuer, subject, "api://AWSTokenExchange")
+		internalToken, err := newAccessToken(p.key, issuer, subject, "api://AWSTokenExchange")
 		if err != nil {
 			c.AbortWithError(http.StatusInternalServerError, err)
 			return

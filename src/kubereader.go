@@ -172,7 +172,7 @@ func (k *kubeReader) getCertificateFromSecret(ctx context.Context, namespace str
 	return privateKey, nil
 }
 
-func (k *kubeReader) getServiceAccountAnnotations(ctx context.Context, namespace string, name string) (map[string]string, error) {
+func (k *kubeReader) GetData(ctx context.Context, namespace string, name string) (map[string]string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
