@@ -248,7 +248,7 @@ func (p *GoogleProvider) getAccessToken(ctx context.Context, googleData googleDa
 	defer res.Body.Close()
 
 	if res.StatusCode != 200 {
-		return nil, "", fmt.Errorf("received a non 200 status code: %d", res.StatusCode)
+		return nil, "", fmt.Errorf("response code was %d: %s", res.StatusCode, string(bodyBytes))
 	}
 
 	contentType := res.Header.Get("Content-Type")

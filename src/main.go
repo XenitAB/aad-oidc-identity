@@ -46,19 +46,19 @@ func run(ctx context.Context, cfg config) error {
 		return err
 	}
 
-	issuer, err := k.getKubeIssuer()
+	kubeIssuer, err := k.getKubeIssuer()
 	if err != nil {
 		return err
 	}
 
 	httpClient := k.getKubeHttpClient()
 
-	providerHandlerFuncs, err := newProviderHandlerFuncs(cfg, k, jwks, issuer)
+	providerHandlerFuncs, err := newProviderHandlerFuncs(cfg, k, jwks)
 	if err != nil {
 		return err
 	}
 
-	ts, err := NewTokenService(cfg, issuer, httpClient, jwks, providerHandlerFuncs)
+	ts, err := NewTokenService(cfg, kubeIssuer, httpClient, jwks, providerHandlerFuncs)
 	if err != nil {
 		return err
 	}
@@ -109,7 +109,7 @@ func run(ctx context.Context, cfg config) error {
 	return nil
 }
 
-func newProviderHandlerFuncs(cfg config, k *kubeReader, jwks *jwksHandler, issuer string) (map[string]gin.HandlerFunc, error) {
+func newProviderHandlerFuncs(cfg config, k *kubeReader, jwks *jwksHandler) (map[string]gin.HandlerFunc, error) {
 	azure, err := provider.NewAzureProvider(k, jwks, cfg.DefaultTenantID)
 	if err != nil {
 		return nil, err
@@ -126,8 +126,8 @@ func newProviderHandlerFuncs(cfg config, k *kubeReader, jwks *jwksHandler, issue
 	}
 
 	return map[string]gin.HandlerFunc{
-		"azure":  azure.NewHandlerFunc(issuer),
-		"aws":    aws.NewHandlerFunc(issuer),
-		"google": google.NewHandlerFunc(issuer),
+		"azure":  azure.NewHandlerFunc(cfg.ExternalIssuer),
+		"aws":    aws.NewHandlerFunc(cfg.ExternalIssuer),
+		"google": google.NewHandlerFunc(cfg.ExternalIssuer),
 	}, nil
 }

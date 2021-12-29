@@ -18,12 +18,12 @@ type publicKeyGetter interface {
 	GetPublicKeySet() jwk.Set
 }
 
-func NewTokenService(cfg config, issuer string, httpClient *http.Client, key publicKeyGetter, providerHandlerFuncs map[string]gin.HandlerFunc) (*tokenService, error) {
+func NewTokenService(cfg config, kubeIssuer string, httpClient *http.Client, key publicKeyGetter, providerHandlerFuncs map[string]gin.HandlerFunc) (*tokenService, error) {
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.Default()
 
 	oidcMiddleware := oidcgin.New(
-		oidcoptions.WithIssuer(issuer),
+		oidcoptions.WithIssuer(kubeIssuer),
 		oidcoptions.WithRequiredAudience(cfg.TokenAudience),
 		oidcoptions.WithLazyLoadJwks(true),
 		oidcoptions.WithHttpClient(httpClient),

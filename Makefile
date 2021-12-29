@@ -15,7 +15,7 @@ all: lint tidy fmt vet test build
 .SILENT: build
 .PHONY: build
 build:
-	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "-s -w" -o bin/aad-oidc-identity ./src/...
+	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "-s -w" -o bin/aad-oidc-identity ./src
 
 .SILENT: lint
 .PHONY: lint
