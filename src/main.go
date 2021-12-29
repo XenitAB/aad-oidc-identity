@@ -11,12 +11,16 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/xenitab/aad-oidc-identity/src/config"
+	"github.com/xenitab/aad-oidc-identity/src/data"
+	"github.com/xenitab/aad-oidc-identity/src/key"
 	"github.com/xenitab/aad-oidc-identity/src/provider"
+	"github.com/xenitab/aad-oidc-identity/src/webserver"
 	"golang.org/x/sync/errgroup"
 )
 
 func main() {
-	cfg, err := loadConfig(os.Args[1:])
+	cfg, err := config.Load(os.Args[1:])
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "unable to load config: %v\n", err)
 		os.Exit(1)
@@ -30,35 +34,35 @@ func main() {
 	}
 }
 
-func run(ctx context.Context, cfg config) error {
-	k, err := newKubeReader(cfg, "")
+func run(ctx context.Context, cfg config.Config) error {
+	dataReader, err := data.NewDataReader(cfg, "")
 	if err != nil {
 		return err
 	}
 
-	rsaKey, err := k.getCertificateFromSecret(context.Background(), "default", "aad-oidc-identity-jwks")
+	rsaKey, err := dataReader.GetCertificateFromSecret(context.Background(), "default", "aad-oidc-identity-jwks")
 	if err != nil {
 		return err
 	}
 
-	jwks, err := newJwksHandler(rsaKey)
+	keyHandler, err := key.NewKeyHandler(rsaKey)
 	if err != nil {
 		return err
 	}
 
-	kubeIssuer, err := k.getKubeIssuer()
+	internalIssuer, err := dataReader.GetInternalIssuer()
 	if err != nil {
 		return err
 	}
 
-	httpClient := k.getKubeHttpClient()
+	httpClient := dataReader.GetHttpClient()
 
-	providerHandlerFuncs, err := newProviderHandlerFuncs(cfg, k, jwks)
+	providerHandlerFuncs, err := newProviderHandlerFuncs(cfg, dataReader, keyHandler)
 	if err != nil {
 		return err
 	}
 
-	ts, err := NewTokenService(cfg, kubeIssuer, httpClient, jwks, providerHandlerFuncs)
+	srv, err := webserver.NewWebServer(cfg, internalIssuer, httpClient, keyHandler, providerHandlerFuncs)
 	if err != nil {
 		return err
 	}
@@ -68,7 +72,7 @@ func run(ctx context.Context, cfg config) error {
 	g, ctx := errgroup.WithContext(ctx)
 
 	g.Go(func() error {
-		if err := ts.server.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+		if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
 			return err
 		}
 
@@ -94,7 +98,7 @@ func run(ctx context.Context, cfg config) error {
 	defer shutdownCancel()
 
 	g.Go(func() error {
-		if err := ts.server.Shutdown(shutdownCtx); err != nil {
+		if err := srv.Shutdown(shutdownCtx); err != nil {
 			return err
 		}
 
@@ -109,18 +113,18 @@ func run(ctx context.Context, cfg config) error {
 	return nil
 }
 
-func newProviderHandlerFuncs(cfg config, k *kubeReader, jwks *jwksHandler) (map[string]gin.HandlerFunc, error) {
-	azure, err := provider.NewAzureProvider(k, jwks, cfg.DefaultTenantID)
+func newProviderHandlerFuncs(cfg config.Config, dataReader *data.DataReader, keyHandler *key.KeyHandler) (map[string]gin.HandlerFunc, error) {
+	azure, err := provider.NewAzureProvider(dataReader, keyHandler, cfg.AzureDefaultTenantID)
 	if err != nil {
 		return nil, err
 	}
 
-	aws, err := provider.NewAwsProvider(k, jwks)
+	aws, err := provider.NewAwsProvider(dataReader, keyHandler)
 	if err != nil {
 		return nil, err
 	}
 
-	google, err := provider.NewGoogleProvider(k, jwks)
+	google, err := provider.NewGoogleProvider(dataReader, keyHandler)
 	if err != nil {
 		return nil, err
 	}

@@ -28,8 +28,8 @@ spec:
           value: "lab"
         - name: EXTERNAL_ISSUER
           value: https://replace-me-external-issuer
-        - name: DEFAULT_TENANT_ID
-          value: replace-me-tenant-id 
+        - name: AZURE_DEFAULT_TENANT_ID
+          value: replace-me-azure-tenant-id 
         ports:
         - containerPort: 8080
           name: http
