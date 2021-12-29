@@ -10,6 +10,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gin-gonic/gin"
+	"github.com/xenitab/aad-oidc-identity/src/provider"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -29,12 +31,34 @@ func main() {
 }
 
 func run(ctx context.Context, cfg config) error {
-	kr, err := newKubeReader(cfg, "")
+	k, err := newKubeReader(cfg, "")
 	if err != nil {
 		return err
 	}
 
-	ts, err := NewTokenService(cfg, kr)
+	rsaKey, err := k.getCertificateFromSecret(context.Background(), "default", "aad-oidc-identity-jwks")
+	if err != nil {
+		return err
+	}
+
+	jwks, err := newJwksHandler(rsaKey)
+	if err != nil {
+		return err
+	}
+
+	kubeIssuer, err := k.getKubeIssuer()
+	if err != nil {
+		return err
+	}
+
+	httpClient := k.getKubeHttpClient()
+
+	providerHandlerFuncs, err := newProviderHandlerFuncs(cfg, k, jwks)
+	if err != nil {
+		return err
+	}
+
+	ts, err := NewTokenService(cfg, kubeIssuer, httpClient, jwks, providerHandlerFuncs)
 	if err != nil {
 		return err
 	}
@@ -83,4 +107,27 @@ func run(ctx context.Context, cfg config) error {
 	}
 
 	return nil
+}
+
+func newProviderHandlerFuncs(cfg config, k *kubeReader, jwks *jwksHandler) (map[string]gin.HandlerFunc, error) {
+	azure, err := provider.NewAzureProvider(k, jwks, cfg.DefaultTenantID)
+	if err != nil {
+		return nil, err
+	}
+
+	aws, err := provider.NewAwsProvider(k, jwks)
+	if err != nil {
+		return nil, err
+	}
+
+	google, err := provider.NewGoogleProvider(k, jwks)
+	if err != nil {
+		return nil, err
+	}
+
+	return map[string]gin.HandlerFunc{
+		"azure":  azure.NewHandlerFunc(cfg.ExternalIssuer),
+		"aws":    aws.NewHandlerFunc(cfg.ExternalIssuer),
+		"google": google.NewHandlerFunc(cfg.ExternalIssuer),
+	}, nil
 }
