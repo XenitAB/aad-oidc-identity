@@ -25,11 +25,6 @@ type kubeReader struct {
 	kubeConfig           *rest.Config
 	httpClient           *http.Client
 	defaultAzureTenantId string
-
-	// FIXME: Add config for these
-	defaultGoogleProjectNumber string
-	defaultGooglePoolId        string
-	defaultGoogleProviderId    string
 }
 
 func newKubeReader(cfg config, kubeConfigPath string) (*kubeReader, error) {

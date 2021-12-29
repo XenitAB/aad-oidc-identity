@@ -87,28 +87,6 @@ func (h *jwksHandler) addJwkFromRsa(rsaKey *rsa.PrivateKey) error {
 	return nil
 }
 
-func (h *jwksHandler) removeOldestKey() error {
-	h.RLock()
-	privKeysLen := len(h.privateKeys)
-	pubKeysLen := len(h.publicKeys)
-	h.RUnlock()
-
-	if privKeysLen != pubKeysLen {
-		return fmt.Errorf("private keys length (%d) isn't equal private keys length (%d)", privKeysLen, pubKeysLen)
-	}
-
-	if privKeysLen <= 1 {
-		return fmt.Errorf("keys length smaller or equal 1: %d", privKeysLen)
-	}
-
-	h.Lock()
-	h.privateKeys = h.privateKeys[1:]
-	h.publicKeys = h.publicKeys[1:]
-	h.Unlock()
-
-	return nil
-}
-
 func (h *jwksHandler) getPrivateKey() jwk.Key {
 	h.RLock()
 
@@ -118,17 +96,6 @@ func (h *jwksHandler) getPrivateKey() jwk.Key {
 	h.RUnlock()
 
 	return privKey
-}
-
-func (h *jwksHandler) getPublicKey() jwk.Key {
-	h.RLock()
-
-	lastKeyIndex := len(h.publicKeys) - 1
-	pubKey := h.publicKeys[lastKeyIndex]
-
-	h.RUnlock()
-
-	return pubKey
 }
 
 func (h *jwksHandler) getPublicKeySet() jwk.Set {
