@@ -16,7 +16,7 @@ type KeyHandler struct {
 	publicKeys  []jwk.Key
 }
 
-func NewKeyHandler(rsaKey *rsa.PrivateKey) (*KeyHandler, error) {
+func NewHandler(rsaKey *rsa.PrivateKey) (*KeyHandler, error) {
 	h := &KeyHandler{
 		privateKeys: []jwk.Key{},
 		publicKeys:  []jwk.Key{},

@@ -10,12 +10,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/xenitab/aad-oidc-identity/src/config"
 	"github.com/xenitab/aad-oidc-identity/src/data"
 	"github.com/xenitab/aad-oidc-identity/src/key"
 	"github.com/xenitab/aad-oidc-identity/src/provider"
-	"github.com/xenitab/aad-oidc-identity/src/webserver"
+	"github.com/xenitab/aad-oidc-identity/src/webexternal"
+	"github.com/xenitab/aad-oidc-identity/src/webinternal"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -35,7 +35,7 @@ func main() {
 }
 
 func run(ctx context.Context, cfg config.Config) error {
-	dataReader, err := data.NewDataReader(cfg, "")
+	dataReader, err := data.NewReader(cfg, "")
 	if err != nil {
 		return err
 	}
@@ -45,7 +45,7 @@ func run(ctx context.Context, cfg config.Config) error {
 		return err
 	}
 
-	keyHandler, err := key.NewKeyHandler(rsaKey)
+	keyHandler, err := key.NewHandler(rsaKey)
 	if err != nil {
 		return err
 	}
@@ -57,12 +57,17 @@ func run(ctx context.Context, cfg config.Config) error {
 
 	httpClient := dataReader.GetHttpClient()
 
-	providerHandlerFuncs, err := newProviderHandlerFuncs(cfg, dataReader, keyHandler)
+	providers, err := newProviders(cfg, dataReader, keyHandler)
 	if err != nil {
 		return err
 	}
 
-	srv, err := webserver.NewWebServer(cfg, internalIssuer, httpClient, keyHandler, providerHandlerFuncs)
+	internalWeb, err := webinternal.NewServer(cfg, internalIssuer, httpClient, providers)
+	if err != nil {
+		return err
+	}
+
+	externalWeb, err := webexternal.NewServer(cfg, keyHandler)
 	if err != nil {
 		return err
 	}
@@ -72,7 +77,15 @@ func run(ctx context.Context, cfg config.Config) error {
 	g, ctx := errgroup.WithContext(ctx)
 
 	g.Go(func() error {
-		if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+		if err := internalWeb.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+			return err
+		}
+
+		return nil
+	})
+
+	g.Go(func() error {
+		if err := externalWeb.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
 			return err
 		}
 
@@ -98,7 +111,15 @@ func run(ctx context.Context, cfg config.Config) error {
 	defer shutdownCancel()
 
 	g.Go(func() error {
-		if err := srv.Shutdown(shutdownCtx); err != nil {
+		if err := externalWeb.Shutdown(shutdownCtx); err != nil {
+			return err
+		}
+
+		return nil
+	})
+
+	g.Go(func() error {
+		if err := internalWeb.Shutdown(shutdownCtx); err != nil {
 			return err
 		}
 
@@ -113,7 +134,7 @@ func run(ctx context.Context, cfg config.Config) error {
 	return nil
 }
 
-func newProviderHandlerFuncs(cfg config.Config, dataReader *data.DataReader, keyHandler *key.KeyHandler) (map[string]gin.HandlerFunc, error) {
+func newProviders(cfg config.Config, dataReader *data.DataReader, keyHandler *key.KeyHandler) (map[string]webinternal.TokenGetter, error) {
 	azure, err := provider.NewAzureProvider(dataReader, keyHandler, cfg.AzureDefaultTenantID)
 	if err != nil {
 		return nil, err
@@ -129,9 +150,9 @@ func newProviderHandlerFuncs(cfg config.Config, dataReader *data.DataReader, key
 		return nil, err
 	}
 
-	return map[string]gin.HandlerFunc{
-		"azure":  azure.NewHandlerFunc(cfg.ExternalIssuer),
-		"aws":    aws.NewHandlerFunc(cfg.ExternalIssuer),
-		"google": google.NewHandlerFunc(cfg.ExternalIssuer),
+	return map[string]webinternal.TokenGetter{
+		"azure":  azure,
+		"aws":    aws,
+		"google": google,
 	}, nil
 }

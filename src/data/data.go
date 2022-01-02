@@ -28,7 +28,7 @@ type DataReader struct {
 	defaultAzureTenantId string
 }
 
-func NewDataReader(cfg config.Config, kubeConfigPath string) (*DataReader, error) {
+func NewReader(cfg config.Config, kubeConfigPath string) (*DataReader, error) {
 	config, err := getKubeConfig(kubeConfigPath)
 	if err != nil {
 		return nil, err

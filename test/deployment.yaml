@@ -22,8 +22,10 @@ spec:
         env:
         - name: TOKEN_AUDIENCE
           value: "aad-oidc-identity"
-        - name: PORT
+        - name: INTERNAL_PORT
           value: "8080"
+        - name: EXTERNAL_PORT
+          value: "8081"
         - name: ENVIRONMENT
           value: "lab"
         - name: EXTERNAL_ISSUER
@@ -32,7 +34,10 @@ spec:
           value: replace-me-azure-tenant-id 
         ports:
         - containerPort: 8080
-          name: http
+          name: internal-http
+          protocol: TCP
+        - containerPort: 8081
+          name: external-http
           protocol: TCP
 ---
 apiVersion: v1
@@ -46,7 +51,7 @@ spec:
     - protocol: TCP
       name: http
       port: 80
-      targetPort: http
+      targetPort: internal-http
 ---
 apiVersion: v1
 kind: Service
@@ -60,7 +65,7 @@ spec:
     - protocol: TCP
       name: http
       port: 80
-      targetPort: http
+      targetPort: external-http
 ---
 apiVersion: v1
 kind: ServiceAccount

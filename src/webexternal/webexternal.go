@@ -1,18 +1,18 @@
-package webserver
+package webexternal
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 
-	"github.com/gin-gonic/gin"
+	gorillaHandlers "github.com/gorilla/handlers"
 	"github.com/lestrrat-go/jwx/jwk"
 	"github.com/xenitab/aad-oidc-identity/src/config"
-	"github.com/xenitab/go-oidc-middleware/oidcgin"
-	oidcoptions "github.com/xenitab/go-oidc-middleware/options"
 )
 
-type WebServer struct {
+type ExternalWeb struct {
 	server *http.Server
 }
 
@@ -20,44 +20,28 @@ type publicKeyGetter interface {
 	GetPublicKeySet() jwk.Set
 }
 
-func NewWebServer(cfg config.Config, internalIssuer string, httpClient *http.Client, key publicKeyGetter, providerHandlerFuncs map[string]gin.HandlerFunc) (*WebServer, error) {
-	gin.SetMode(gin.ReleaseMode)
-	r := gin.Default()
+func NewServer(cfg config.Config, key publicKeyGetter) (*ExternalWeb, error) {
+	router := http.NewServeMux()
+	router.HandleFunc("/.well-known/openid-configuration", metadataHandler(cfg.ExternalIssuer))
+	router.HandleFunc("/jwks", jwksHandler(key))
 
-	oidcMiddleware := oidcgin.New(
-		oidcoptions.WithIssuer(internalIssuer),
-		oidcoptions.WithRequiredAudience(cfg.TokenAudience),
-		oidcoptions.WithLazyLoadJwks(true),
-		oidcoptions.WithHttpClient(httpClient),
-	)
-
-	internal := r.Group("/internal/", oidcMiddleware)
-	external := r.Group("/external/")
-
-	for provider, handler := range providerHandlerFuncs {
-		internal.GET(fmt.Sprintf("/token/%s", provider), handler)
-	}
-
-	external.GET("/.well-known/openid-configuration", metadataHttpHandler(cfg.ExternalIssuer))
-	external.GET("/jwks", jwksHttpHandler(key))
-
-	addr := fmt.Sprintf("%s:%d", cfg.Address, cfg.Port)
+	addr := fmt.Sprintf("%s:%d", cfg.Address, cfg.ExternalPort)
 
 	srv := &http.Server{
 		Addr:    addr,
-		Handler: r,
+		Handler: gorillaHandlers.CombinedLoggingHandler(log.Writer(), router),
 	}
 
-	return &WebServer{
+	return &ExternalWeb{
 		server: srv,
 	}, nil
 }
 
-func (srv *WebServer) ListenAndServe() error {
+func (srv *ExternalWeb) ListenAndServe() error {
 	return srv.server.ListenAndServe()
 }
 
-func (srv *WebServer) Shutdown(ctx context.Context) error {
+func (srv *ExternalWeb) Shutdown(ctx context.Context) error {
 	return srv.server.Shutdown(ctx)
 }
 
@@ -79,8 +63,8 @@ type metadata struct {
 	SubjectTypesSupported            []string `json:"subject_types_supported"`
 }
 
-func metadataHttpHandler(externalIssuer string) gin.HandlerFunc {
-	return func(c *gin.Context) {
+func metadataHandler(externalIssuer string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
 		data := metadata{
 			Issuer:                           externalIssuer,
 			JwksUri:                          fmt.Sprintf("%s/jwks", externalIssuer),
@@ -89,14 +73,21 @@ func metadataHttpHandler(externalIssuer string) gin.HandlerFunc {
 			SubjectTypesSupported:            []string{"public", "pairwise"},
 		}
 
-		c.JSON(http.StatusOK, data)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+
+		json.NewEncoder(w).Encode(data)
 	}
 }
 
-func jwksHttpHandler(key publicKeyGetter) gin.HandlerFunc {
-	return func(c *gin.Context) {
+func jwksHandler(key publicKeyGetter) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
 		pubKey := key.GetPublicKeySet()
 
-		c.JSON(http.StatusOK, pubKey)
+		w.Header().Set("Content-Type", "application/json")
+		e := json.NewEncoder(w)
+		e.SetIndent("", "  ")
+
+		e.Encode(pubKey)
 	}
 }
