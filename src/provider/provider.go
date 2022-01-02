@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/lestrrat-go/jwx/jwa"
 	"github.com/lestrrat-go/jwx/jwk"
 	"github.com/lestrrat-go/jwx/jws"
@@ -64,30 +63,6 @@ func newAccessToken(key privateKeyGetter, issuer string, subject string, aud str
 	access := string(signedToken)
 
 	return access, nil
-}
-
-func getSubjectFromClaims(c *gin.Context) (string, error) {
-	claimsValue, ok := c.Get("claims")
-	if !ok {
-		return "", fmt.Errorf("unable to find claims in context")
-	}
-
-	claims, ok := claimsValue.(map[string]interface{})
-	if !ok {
-		return "", fmt.Errorf("unable to typecast claims to map[string]interface{}: %T", claimsValue)
-	}
-
-	rawSub, ok := claims["sub"]
-	if !ok {
-		return "", fmt.Errorf("unable to find sub in claims")
-	}
-
-	sub, ok := rawSub.(string)
-	if !ok {
-		return "", fmt.Errorf("unable to typecast sub to string: %T", rawSub)
-	}
-
-	return sub, nil
 }
 
 func getNamespaceAndServiceAccountFromSubject(sub string) (string, string, error) {

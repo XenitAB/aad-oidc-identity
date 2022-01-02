@@ -7,8 +7,6 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-
-	"github.com/gin-gonic/gin"
 )
 
 const (
@@ -126,38 +124,21 @@ func (p *AwsProvider) getAccessToken(ctx context.Context, awsData awsData, inter
 	return bodyBytes, contentType, nil
 }
 
-func (p *AwsProvider) NewHandlerFunc(issuer string) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		subject, err := getSubjectFromClaims(c)
-		if err != nil {
-			c.AbortWithError(http.StatusInternalServerError, err)
-			return
-		}
-
-		internalToken, err := newAccessToken(p.key, issuer, subject, "api://AWSTokenExchange")
-		if err != nil {
-			c.AbortWithError(http.StatusInternalServerError, err)
-			return
-		}
-
-		namespace, serviceAccount, err := getNamespaceAndServiceAccountFromSubject(subject)
-		if err != nil {
-			c.AbortWithError(http.StatusInternalServerError, err)
-			return
-		}
-
-		reqData, err := p.getProviderData(c.Request.Context(), namespace, serviceAccount)
-		if err != nil {
-			c.AbortWithError(http.StatusInternalServerError, err)
-			return
-		}
-
-		responseData, contentType, err := p.getAccessToken(c.Request.Context(), reqData, internalToken, subject)
-		if err != nil {
-			c.AbortWithError(http.StatusInternalServerError, err)
-			return
-		}
-
-		c.Data(http.StatusOK, contentType, responseData)
+func (p *AwsProvider) GetToken(ctx context.Context, issuer string, subject string) ([]byte, string, error) {
+	internalToken, err := newAccessToken(p.key, issuer, subject, "api://AWSTokenExchange")
+	if err != nil {
+		return nil, "", err
 	}
+
+	namespace, serviceAccount, err := getNamespaceAndServiceAccountFromSubject(subject)
+	if err != nil {
+		return nil, "", err
+	}
+
+	reqData, err := p.getProviderData(ctx, namespace, serviceAccount)
+	if err != nil {
+		return nil, "", err
+	}
+
+	return p.getAccessToken(ctx, reqData, internalToken, subject)
 }

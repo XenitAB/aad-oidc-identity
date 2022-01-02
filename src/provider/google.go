@@ -9,8 +9,6 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-
-	"github.com/gin-gonic/gin"
 )
 
 const (
@@ -259,40 +257,23 @@ func (p *GoogleProvider) getAccessToken(ctx context.Context, googleData googleDa
 	return bodyBytes, contentType, nil
 }
 
-func (p *GoogleProvider) NewHandlerFunc(issuer string) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		subject, err := getSubjectFromClaims(c)
-		if err != nil {
-			c.AbortWithError(http.StatusInternalServerError, err)
-			return
-		}
-
-		namespace, serviceAccount, err := getNamespaceAndServiceAccountFromSubject(subject)
-		if err != nil {
-			c.AbortWithError(http.StatusInternalServerError, err)
-			return
-		}
-
-		reqData, err := p.getProviderData(c.Request.Context(), namespace, serviceAccount)
-		if err != nil {
-			c.AbortWithError(http.StatusInternalServerError, err)
-			return
-		}
-
-		audience := fmt.Sprintf("https://iam.googleapis.com/projects/%s/locations/global/workloadIdentityPools/%s/providers/%s", reqData.projectNumber, reqData.poolId, reqData.providerId)
-
-		internalToken, err := newAccessToken(p.key, issuer, subject, audience)
-		if err != nil {
-			c.AbortWithError(http.StatusInternalServerError, err)
-			return
-		}
-
-		responseData, contentType, err := p.getAccessToken(c.Request.Context(), reqData, internalToken, subject, audience)
-		if err != nil {
-			c.AbortWithError(http.StatusInternalServerError, err)
-			return
-		}
-
-		c.Data(http.StatusOK, contentType, responseData)
+func (p *GoogleProvider) GetToken(ctx context.Context, issuer string, subject string) ([]byte, string, error) {
+	namespace, serviceAccount, err := getNamespaceAndServiceAccountFromSubject(subject)
+	if err != nil {
+		return nil, "", err
 	}
+
+	reqData, err := p.getProviderData(ctx, namespace, serviceAccount)
+	if err != nil {
+		return nil, "", err
+	}
+
+	audience := fmt.Sprintf("https://iam.googleapis.com/projects/%s/locations/global/workloadIdentityPools/%s/providers/%s", reqData.projectNumber, reqData.poolId, reqData.providerId)
+
+	internalToken, err := newAccessToken(p.key, issuer, subject, audience)
+	if err != nil {
+		return nil, "", err
+	}
+
+	return p.getAccessToken(ctx, reqData, internalToken, subject, audience)
 }
