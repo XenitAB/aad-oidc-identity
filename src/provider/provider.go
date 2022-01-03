@@ -12,10 +12,12 @@ import (
 	"github.com/lestrrat-go/jwx/jwt"
 )
 
+// FIXME: Better name
 type privateKeyGetter interface {
 	GetPrivateKey() jwk.Key
 }
 
+// FIXME: Better name
 type dataGetter interface {
 	GetData(ctx context.Context, namespace string, name string) (map[string]string, error)
 }

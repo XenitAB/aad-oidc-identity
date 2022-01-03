@@ -29,42 +29,29 @@ type GoogleProvider struct {
 }
 
 func (p *GoogleProvider) validate() error {
-	if p.data == nil {
-		return fmt.Errorf("googleProvider data is nil")
+	if p.defaultScope == "" {
+		return fmt.Errorf("unabe to get google provider options: defaultScope is empty")
 	}
-
-	if p.key == nil {
-		return fmt.Errorf("googleProvider key is nil")
-	}
-
-	// FIXME: Configure defaults
-	// if p.defaultProjectNumber == "" {
-	// 	return fmt.Errorf("googleProvider defaultProjectNumber is empty")
-	// }
-
-	// if p.defaultPoolId == "" {
-	// 	return fmt.Errorf("googleProvider defaultPoolId is empty")
-	// }
-
-	// if p.defaultProviderId == "" {
-	// 	return fmt.Errorf("googleProvider defaultProviderId is empty")
-	// }
-
-	// if p.defaultScope == "" {
-	// 	return fmt.Errorf("googleProvider defaultScope is empty")
-	// }
 
 	return nil
 }
 
-func NewGoogleProvider(data dataGetter, key privateKeyGetter) (*GoogleProvider, error) {
-	p := &GoogleProvider{
-		data:         data,
-		key:          key,
-		defaultScope: "https://www.googleapis.com/auth/cloud-platform",
+func NewGoogleProvider(setters ...Option) (*GoogleProvider, error) {
+	opts, err := newOptions(setters...)
+	if err != nil {
+		return nil, fmt.Errorf("unable to get google provider options: %w", err)
 	}
 
-	err := p.validate()
+	p := &GoogleProvider{
+		data:                 opts.dataGetter,
+		key:                  opts.privateKeyGetter,
+		defaultScope:         opts.googleDefaultScope,
+		defaultProjectNumber: opts.googleDefaultProjectNumber,
+		defaultPoolId:        opts.googleDefaultPoolId,
+		defaultProviderId:    opts.googleDefaultProviderId,
+	}
+
+	err = p.validate()
 	if err != nil {
 		return nil, err
 	}

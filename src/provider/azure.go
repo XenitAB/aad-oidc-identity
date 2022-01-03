@@ -23,34 +23,31 @@ type AzureProvider struct {
 }
 
 func (p *AzureProvider) validate() error {
-	if p.data == nil {
-		return fmt.Errorf("azureProvider data is nil")
-	}
-
-	if p.key == nil {
-		return fmt.Errorf("azureProvider key is nil")
-	}
-
 	if p.defaultTenantId == "" {
-		return fmt.Errorf("azureProvider defaultTenantId is empty")
+		return fmt.Errorf("unabe to get azure provider options: defaultTenantId is empty")
 	}
 
 	if p.defaultScope == "" {
-		return fmt.Errorf("azureProvider defaultScope is empty")
+		return fmt.Errorf("unabe to get azure provider options: defaultScope is empty")
 	}
 
 	return nil
 }
 
-func NewAzureProvider(data dataGetter, key privateKeyGetter, tenantId string) (*AzureProvider, error) {
-	p := &AzureProvider{
-		data:            data,
-		key:             key,
-		defaultTenantId: tenantId,
-		defaultScope:    "https://management.core.windows.net/.default",
+func NewAzureProvider(setters ...Option) (*AzureProvider, error) {
+	opts, err := newOptions(setters...)
+	if err != nil {
+		return nil, fmt.Errorf("unable to get azure provider options: %w", err)
 	}
 
-	err := p.validate()
+	p := &AzureProvider{
+		data:            opts.dataGetter,
+		key:             opts.privateKeyGetter,
+		defaultTenantId: opts.azureDefaultTenantId,
+		defaultScope:    opts.azureDefaultScope,
+	}
+
+	err = p.validate()
 	if err != nil {
 		return nil, err
 	}

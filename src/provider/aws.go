@@ -19,24 +19,21 @@ type AwsProvider struct {
 }
 
 func (p *AwsProvider) validate() error {
-	if p.data == nil {
-		return fmt.Errorf("awsProvider data is nil")
-	}
-
-	if p.key == nil {
-		return fmt.Errorf("awsProvider key is nil")
-	}
-
 	return nil
 }
 
-func NewAwsProvider(data dataGetter, key privateKeyGetter) (*AwsProvider, error) {
-	p := &AwsProvider{
-		data: data,
-		key:  key,
+func NewAwsProvider(setters ...Option) (*AwsProvider, error) {
+	opts, err := newOptions(setters...)
+	if err != nil {
+		return nil, fmt.Errorf("unable to get aws provider options: %w", err)
 	}
 
-	err := p.validate()
+	p := &AwsProvider{
+		data: opts.dataGetter,
+		key:  opts.privateKeyGetter,
+	}
+
+	err = p.validate()
 	if err != nil {
 		return nil, err
 	}

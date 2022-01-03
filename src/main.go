@@ -149,17 +149,24 @@ func run(ctx context.Context, cfg config.Config) error {
 }
 
 func newProviders(cfg config.Config, kubeClient *kube.KubeClient, keyHandler *key.KeyHandler) (map[string]webinternal.TokenGetter, error) {
-	azure, err := provider.NewAzureProvider(kubeClient, keyHandler, cfg.AzureDefaultTenantID)
+	azure, err := provider.NewAzureProvider(
+		provider.WithDataGetter(kubeClient),
+		provider.WithPrivateKeyGetter(keyHandler),
+		provider.WithAzureDefaultTenantId(cfg.AzureDefaultTenantID))
 	if err != nil {
 		return nil, err
 	}
 
-	aws, err := provider.NewAwsProvider(kubeClient, keyHandler)
+	aws, err := provider.NewAwsProvider(
+		provider.WithDataGetter(kubeClient),
+		provider.WithPrivateKeyGetter(keyHandler))
 	if err != nil {
 		return nil, err
 	}
 
-	google, err := provider.NewGoogleProvider(kubeClient, keyHandler)
+	google, err := provider.NewGoogleProvider(
+		provider.WithDataGetter(kubeClient),
+		provider.WithPrivateKeyGetter(keyHandler))
 	if err != nil {
 		return nil, err
 	}
