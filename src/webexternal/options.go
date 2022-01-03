@@ -51,24 +51,32 @@ type Option func(*options)
 
 func WithAddress(opt string) Option {
 	return func(opts *options) {
-		opts.address = opt
+		if opt != "" {
+			opts.address = opt
+		}
 	}
 }
 
 func WithPort(opt int) Option {
 	return func(opts *options) {
-		opts.port = opt
+		if opt != 0 {
+			opts.port = opt
+		}
 	}
 }
 
 func WithIssuer(opt string) Option {
 	return func(opts *options) {
-		opts.issuer = opt
+		if opt != "" {
+			opts.issuer = opt
+		}
 	}
 }
 
 func WithPublicKeyGetter(opt publicKeyGetter) Option {
 	return func(opts *options) {
-		opts.key = opt
+		if opt != nil {
+			opts.key = opt
+		}
 	}
 }
