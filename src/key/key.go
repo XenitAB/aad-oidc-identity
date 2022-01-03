@@ -16,13 +16,18 @@ type KeyHandler struct {
 	publicKeys  []jwk.Key
 }
 
-func NewHandler(rsaKey *rsa.PrivateKey) (*KeyHandler, error) {
+func NewHandler(setters ...Option) (*KeyHandler, error) {
+	opts, err := newOptions(setters...)
+	if err != nil {
+		return nil, fmt.Errorf("unable to get key options: %w", err)
+	}
+
 	h := &KeyHandler{
 		privateKeys: []jwk.Key{},
 		publicKeys:  []jwk.Key{},
 	}
 
-	err := h.addJwkFromRsa(rsaKey)
+	err = h.addJwkFromRsa(opts.rsaKey)
 	if err != nil {
 		return nil, err
 	}

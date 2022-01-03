@@ -54,7 +54,8 @@ func run(ctx context.Context, cfg config.Config) error {
 		return err
 	}
 
-	keyHandler, err := key.NewHandler(rsaKey)
+	keyHandler, err := key.NewHandler(
+		key.WithRSAKey(rsaKey))
 	if err != nil {
 		return err
 	}
