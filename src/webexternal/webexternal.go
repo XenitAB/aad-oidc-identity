@@ -15,6 +15,7 @@ type WebExternal struct {
 	server *http.Server
 }
 
+// FIXME: Better name
 type publicKeyGetter interface {
 	GetPublicKeySet() jwk.Set
 }

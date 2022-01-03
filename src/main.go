@@ -69,12 +69,19 @@ func run(ctx context.Context, cfg config.Config) error {
 		return err
 	}
 
-	iWeb, err := webinternal.NewServer(cfg, internalIssuer, httpClient, providers)
+	webInternal, err := webinternal.NewServer(
+		webinternal.WithAddress(cfg.Address),
+		webinternal.WithPort(cfg.InternalPort),
+		webinternal.WithIssuerInternal(internalIssuer),
+		webinternal.WithIssuerExternal(cfg.ExternalIssuer),
+		webinternal.WithAudience(cfg.TokenAudience),
+		webinternal.WithHttpClient(httpClient),
+		webinternal.WithProviderTokenGetter(providers))
 	if err != nil {
 		return err
 	}
 
-	eWeb, err := webexternal.NewServer(
+	webExternal, err := webexternal.NewServer(
 		webexternal.WithAddress(cfg.Address),
 		webexternal.WithPort(cfg.ExternalPort),
 		webexternal.WithIssuer(cfg.ExternalIssuer),
@@ -84,7 +91,7 @@ func run(ctx context.Context, cfg config.Config) error {
 	}
 
 	g.Go(func() error {
-		if err := iWeb.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+		if err := webInternal.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
 			return err
 		}
 
@@ -92,7 +99,7 @@ func run(ctx context.Context, cfg config.Config) error {
 	})
 
 	g.Go(func() error {
-		if err := eWeb.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+		if err := webExternal.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
 			return err
 		}
 
@@ -118,7 +125,7 @@ func run(ctx context.Context, cfg config.Config) error {
 	defer shutdownCancel()
 
 	g.Go(func() error {
-		if err := eWeb.Shutdown(shutdownCtx); err != nil {
+		if err := webExternal.Shutdown(shutdownCtx); err != nil {
 			return err
 		}
 
@@ -126,7 +133,7 @@ func run(ctx context.Context, cfg config.Config) error {
 	})
 
 	g.Go(func() error {
-		if err := iWeb.Shutdown(shutdownCtx); err != nil {
+		if err := webInternal.Shutdown(shutdownCtx); err != nil {
 			return err
 		}
 

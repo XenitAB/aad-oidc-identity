@@ -7,7 +7,6 @@ import (
 	"net/http"
 
 	gorillaHandlers "github.com/gorilla/handlers"
-	"github.com/xenitab/aad-oidc-identity/src/config"
 	"github.com/xenitab/go-oidc-middleware/oidchttp"
 	oidcoptions "github.com/xenitab/go-oidc-middleware/options"
 )
@@ -16,25 +15,30 @@ type WebInternal struct {
 	server *http.Server
 }
 
+// FIXME: Better name
 type TokenGetter interface {
 	GetToken(ctx context.Context, issuer string, subject string) ([]byte, string, error)
 }
 
-func NewServer(cfg config.Config, internalIssuer string, httpClient *http.Client, providerTokenGetter map[string]TokenGetter) (*WebInternal, error) {
+func NewServer(setters ...Option) (*WebInternal, error) {
+	opts, err := newOptions(setters...)
+	if err != nil {
+		return nil, fmt.Errorf("unable to get webinternal options: %w", err)
+	}
 	router := http.NewServeMux()
 
-	for provider, t := range providerTokenGetter {
-		router.HandleFunc(fmt.Sprintf("/token/%s", provider), tokenHandler(t, cfg.ExternalIssuer))
+	for provider, t := range opts.providerTokenGetter {
+		router.HandleFunc(fmt.Sprintf("/token/%s", provider), tokenHandler(t, opts.issuerExternal))
 	}
 
 	oidcHandler := oidchttp.New(router,
-		oidcoptions.WithIssuer(internalIssuer),
-		oidcoptions.WithRequiredAudience(cfg.TokenAudience),
+		oidcoptions.WithIssuer(opts.issuerInternal),
+		oidcoptions.WithRequiredAudience(opts.audience),
 		oidcoptions.WithLazyLoadJwks(true),
-		oidcoptions.WithHttpClient(httpClient),
+		oidcoptions.WithHttpClient(opts.httpClient),
 	)
 
-	addr := fmt.Sprintf("%s:%d", cfg.Address, cfg.InternalPort)
+	addr := fmt.Sprintf("%s:%d", opts.address, opts.port)
 
 	srv := &http.Server{
 		Addr:    addr,
