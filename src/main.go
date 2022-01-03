@@ -39,7 +39,9 @@ func run(ctx context.Context, cfg config.Config) error {
 	defer cancel()
 	g, ctx := errgroup.WithContext(ctx)
 
-	kubeClient, err := kube.NewClient(cfg, "")
+	kubeClient, err := kube.NewClient(
+		kube.WithNamespace(cfg.Namespace),
+		kube.WithCertificateSecretName(cfg.CertificateSecretName))
 	if err != nil {
 		return err
 	}

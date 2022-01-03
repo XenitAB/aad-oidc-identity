@@ -14,7 +14,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/xenitab/aad-oidc-identity/src/config"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -22,15 +21,20 @@ import (
 )
 
 type KubeClient struct {
-	kubeClient       kubernetes.Interface
-	kubeConfig       *rest.Config
-	httpClient       *http.Client
-	namespace        string
-	rsaKeySecretName string
+	kubeClient            kubernetes.Interface
+	kubeConfig            *rest.Config
+	httpClient            *http.Client
+	namespace             string
+	certificateSecretName string
 }
 
-func NewClient(cfg config.Config, kubeConfigPath string) (*KubeClient, error) {
-	config, err := getKubeConfig(kubeConfigPath)
+func NewClient(setters ...Option) (*KubeClient, error) {
+	opts, err := newOptions(setters...)
+	if err != nil {
+		return nil, fmt.Errorf("unable to get kube options: %w", err)
+	}
+
+	config, err := getKubeConfig(opts.configPath)
 	if err != nil {
 		return nil, err
 	}
@@ -46,11 +50,11 @@ func NewClient(cfg config.Config, kubeConfigPath string) (*KubeClient, error) {
 	}
 
 	return &KubeClient{
-		kubeClient:       clientset,
-		kubeConfig:       config,
-		httpClient:       httpClient,
-		namespace:        cfg.Namespace,
-		rsaKeySecretName: cfg.RsaKeySecretName,
+		kubeClient:            clientset,
+		kubeConfig:            config,
+		httpClient:            httpClient,
+		namespace:             opts.namespace,
+		certificateSecretName: opts.certificateSecretName,
 	}, nil
 }
 
@@ -122,19 +126,19 @@ func (k *KubeClient) GetCertificate(ctx context.Context) (*rsa.PrivateKey, error
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	secret, err := k.kubeClient.CoreV1().Secrets(k.namespace).Get(ctx, k.rsaKeySecretName, metav1.GetOptions{})
+	secret, err := k.kubeClient.CoreV1().Secrets(k.namespace).Get(ctx, k.certificateSecretName, metav1.GetOptions{})
 	if err != nil {
 		return nil, err
 	}
 
 	certBytes, ok := secret.Data["tls.crt"]
 	if !ok {
-		return nil, fmt.Errorf("unable to extract 'tls.crt' from secret %s/%s", k.namespace, k.rsaKeySecretName)
+		return nil, fmt.Errorf("unable to extract 'tls.crt' from secret %s/%s", k.namespace, k.certificateSecretName)
 	}
 
 	keyBytes, ok := secret.Data["tls.key"]
 	if !ok {
-		return nil, fmt.Errorf("unable to extract 'tls.key' from secret %s/%s", k.namespace, k.rsaKeySecretName)
+		return nil, fmt.Errorf("unable to extract 'tls.key' from secret %s/%s", k.namespace, k.certificateSecretName)
 	}
 
 	keyPem, _ := pem.Decode(keyBytes)
