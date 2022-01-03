@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/xenitab/aad-oidc-identity/src/config"
-	"github.com/xenitab/aad-oidc-identity/src/data"
 	"github.com/xenitab/aad-oidc-identity/src/key"
+	"github.com/xenitab/aad-oidc-identity/src/kube"
 	"github.com/xenitab/aad-oidc-identity/src/provider"
 	"github.com/xenitab/aad-oidc-identity/src/webexternal"
 	"github.com/xenitab/aad-oidc-identity/src/webinternal"
@@ -39,7 +39,7 @@ func run(ctx context.Context, cfg config.Config) error {
 	defer cancel()
 	g, ctx := errgroup.WithContext(ctx)
 
-	dataReader, err := data.NewReader(cfg, "")
+	kubeClient, err := kube.NewClient(cfg, "")
 	if err != nil {
 		return err
 	}
@@ -47,7 +47,7 @@ func run(ctx context.Context, cfg config.Config) error {
 	rsaKeyCtx, rsaKeyCtxCancel := context.WithTimeout(ctx, 5*time.Second)
 	defer rsaKeyCtxCancel()
 
-	rsaKey, err := dataReader.GetCertificate(rsaKeyCtx)
+	rsaKey, err := kubeClient.GetCertificate(rsaKeyCtx)
 	if err != nil {
 		return err
 	}
@@ -57,14 +57,14 @@ func run(ctx context.Context, cfg config.Config) error {
 		return err
 	}
 
-	internalIssuer, err := dataReader.GetInternalIssuer()
+	internalIssuer, err := kubeClient.GetInternalIssuer()
 	if err != nil {
 		return err
 	}
 
-	httpClient := dataReader.GetHttpClient()
+	httpClient := kubeClient.GetHttpClient()
 
-	providers, err := newProviders(cfg, dataReader, keyHandler)
+	providers, err := newProviders(cfg, kubeClient, keyHandler)
 	if err != nil {
 		return err
 	}
@@ -137,18 +137,18 @@ func run(ctx context.Context, cfg config.Config) error {
 	return nil
 }
 
-func newProviders(cfg config.Config, dataReader *data.DataReader, keyHandler *key.KeyHandler) (map[string]webinternal.TokenGetter, error) {
-	azure, err := provider.NewAzureProvider(dataReader, keyHandler, cfg.AzureDefaultTenantID)
+func newProviders(cfg config.Config, kubeClient *kube.KubeClient, keyHandler *key.KeyHandler) (map[string]webinternal.TokenGetter, error) {
+	azure, err := provider.NewAzureProvider(kubeClient, keyHandler, cfg.AzureDefaultTenantID)
 	if err != nil {
 		return nil, err
 	}
 
-	aws, err := provider.NewAwsProvider(dataReader, keyHandler)
+	aws, err := provider.NewAwsProvider(kubeClient, keyHandler)
 	if err != nil {
 		return nil, err
 	}
 
-	google, err := provider.NewGoogleProvider(dataReader, keyHandler)
+	google, err := provider.NewGoogleProvider(kubeClient, keyHandler)
 	if err != nil {
 		return nil, err
 	}

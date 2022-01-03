@@ -1,4 +1,4 @@
-package data
+package kube
 
 import (
 	"context"
@@ -21,7 +21,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 )
 
-type DataReader struct {
+type KubeClient struct {
 	kubeClient           kubernetes.Interface
 	kubeConfig           *rest.Config
 	httpClient           *http.Client
@@ -30,7 +30,7 @@ type DataReader struct {
 	rsaKeySecretName     string
 }
 
-func NewReader(cfg config.Config, kubeConfigPath string) (*DataReader, error) {
+func NewClient(cfg config.Config, kubeConfigPath string) (*KubeClient, error) {
 	config, err := getKubeConfig(kubeConfigPath)
 	if err != nil {
 		return nil, err
@@ -46,7 +46,7 @@ func NewReader(cfg config.Config, kubeConfigPath string) (*DataReader, error) {
 		return nil, err
 	}
 
-	return &DataReader{
+	return &KubeClient{
 		kubeClient:           clientset,
 		kubeConfig:           config,
 		httpClient:           httpClient,
@@ -56,7 +56,7 @@ func NewReader(cfg config.Config, kubeConfigPath string) (*DataReader, error) {
 	}, nil
 }
 
-func (k *DataReader) GetInternalIssuer() (string, error) {
+func (k *KubeClient) GetInternalIssuer() (string, error) {
 	baseReqUrl := strings.TrimSuffix(k.kubeConfig.Host, "/")
 	reqUrl := fmt.Sprintf("%s/.well-known/openid-configuration", baseReqUrl)
 	req, err := http.NewRequest(http.MethodGet, reqUrl, nil)
@@ -88,7 +88,7 @@ func (k *DataReader) GetInternalIssuer() (string, error) {
 	return data.Issuer, nil
 }
 
-func (k *DataReader) GetHttpClient() *http.Client {
+func (k *KubeClient) GetHttpClient() *http.Client {
 	return k.httpClient
 }
 
@@ -120,7 +120,7 @@ func newHttpClient(restConfig *rest.Config) (*http.Client, error) {
 	return httpClient, nil
 }
 
-func (k *DataReader) GetCertificate(ctx context.Context) (*rsa.PrivateKey, error) {
+func (k *KubeClient) GetCertificate(ctx context.Context) (*rsa.PrivateKey, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
@@ -177,7 +177,7 @@ func (k *DataReader) GetCertificate(ctx context.Context) (*rsa.PrivateKey, error
 	return privateKey, nil
 }
 
-func (k *DataReader) GetData(ctx context.Context, namespace string, name string) (map[string]string, error) {
+func (k *KubeClient) GetData(ctx context.Context, namespace string, name string) (map[string]string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
