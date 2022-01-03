@@ -9,10 +9,9 @@ import (
 
 	gorillaHandlers "github.com/gorilla/handlers"
 	"github.com/lestrrat-go/jwx/jwk"
-	"github.com/xenitab/aad-oidc-identity/src/config"
 )
 
-type ExternalWeb struct {
+type WebExternal struct {
 	server *http.Server
 }
 
@@ -20,28 +19,33 @@ type publicKeyGetter interface {
 	GetPublicKeySet() jwk.Set
 }
 
-func NewServer(cfg config.Config, key publicKeyGetter) (*ExternalWeb, error) {
-	router := http.NewServeMux()
-	router.HandleFunc("/.well-known/openid-configuration", metadataHandler(cfg.ExternalIssuer))
-	router.HandleFunc("/jwks", jwksHandler(key))
+func NewServer(setters ...Option) (*WebExternal, error) {
+	opts, err := newOptions(setters...)
+	if err != nil {
+		return nil, fmt.Errorf("unable to get webexternal options: %w", err)
+	}
 
-	addr := fmt.Sprintf("%s:%d", cfg.Address, cfg.ExternalPort)
+	router := http.NewServeMux()
+	router.HandleFunc("/.well-known/openid-configuration", metadataHandler(opts.issuer))
+	router.HandleFunc("/jwks", jwksHandler(opts.key))
+
+	addr := fmt.Sprintf("%s:%d", opts.address, opts.port)
 
 	srv := &http.Server{
 		Addr:    addr,
 		Handler: gorillaHandlers.CombinedLoggingHandler(log.Writer(), router),
 	}
 
-	return &ExternalWeb{
+	return &WebExternal{
 		server: srv,
 	}, nil
 }
 
-func (srv *ExternalWeb) ListenAndServe() error {
+func (srv *WebExternal) ListenAndServe() error {
 	return srv.server.ListenAndServe()
 }
 
-func (srv *ExternalWeb) Shutdown(ctx context.Context) error {
+func (srv *WebExternal) Shutdown(ctx context.Context) error {
 	return srv.server.Shutdown(ctx)
 }
 

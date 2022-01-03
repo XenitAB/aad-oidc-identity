@@ -74,7 +74,11 @@ func run(ctx context.Context, cfg config.Config) error {
 		return err
 	}
 
-	eWeb, err := webexternal.NewServer(cfg, keyHandler)
+	eWeb, err := webexternal.NewServer(
+		webexternal.WithAddress(cfg.Address),
+		webexternal.WithPort(cfg.ExternalPort),
+		webexternal.WithIssuer(cfg.ExternalIssuer),
+		webexternal.WithPublicKeyGetter(keyHandler))
 	if err != nil {
 		return err
 	}
