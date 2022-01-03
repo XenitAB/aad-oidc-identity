@@ -22,12 +22,11 @@ import (
 )
 
 type KubeClient struct {
-	kubeClient           kubernetes.Interface
-	kubeConfig           *rest.Config
-	httpClient           *http.Client
-	defaultAzureTenantId string
-	namespace            string
-	rsaKeySecretName     string
+	kubeClient       kubernetes.Interface
+	kubeConfig       *rest.Config
+	httpClient       *http.Client
+	namespace        string
+	rsaKeySecretName string
 }
 
 func NewClient(cfg config.Config, kubeConfigPath string) (*KubeClient, error) {
@@ -47,12 +46,11 @@ func NewClient(cfg config.Config, kubeConfigPath string) (*KubeClient, error) {
 	}
 
 	return &KubeClient{
-		kubeClient:           clientset,
-		kubeConfig:           config,
-		httpClient:           httpClient,
-		defaultAzureTenantId: cfg.AzureDefaultTenantID,
-		namespace:            cfg.Namespace,
-		rsaKeySecretName:     cfg.RsaKeySecretName,
+		kubeClient:       clientset,
+		kubeConfig:       config,
+		httpClient:       httpClient,
+		namespace:        cfg.Namespace,
+		rsaKeySecretName: cfg.RsaKeySecretName,
 	}, nil
 }
 
