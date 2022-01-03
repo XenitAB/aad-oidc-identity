@@ -12,7 +12,7 @@ import (
 	oidcoptions "github.com/xenitab/go-oidc-middleware/options"
 )
 
-type InternalWeb struct {
+type WebInternal struct {
 	server *http.Server
 }
 
@@ -20,7 +20,7 @@ type TokenGetter interface {
 	GetToken(ctx context.Context, issuer string, subject string) ([]byte, string, error)
 }
 
-func NewServer(cfg config.Config, internalIssuer string, httpClient *http.Client, providerTokenGetter map[string]TokenGetter) (*InternalWeb, error) {
+func NewServer(cfg config.Config, internalIssuer string, httpClient *http.Client, providerTokenGetter map[string]TokenGetter) (*WebInternal, error) {
 	router := http.NewServeMux()
 
 	for provider, t := range providerTokenGetter {
@@ -41,16 +41,16 @@ func NewServer(cfg config.Config, internalIssuer string, httpClient *http.Client
 		Handler: gorillaHandlers.CombinedLoggingHandler(log.Writer(), oidcHandler),
 	}
 
-	return &InternalWeb{
+	return &WebInternal{
 		server: srv,
 	}, nil
 }
 
-func (srv *InternalWeb) ListenAndServe() error {
+func (srv *WebInternal) ListenAndServe() error {
 	return srv.server.ListenAndServe()
 }
 
-func (srv *InternalWeb) Shutdown(ctx context.Context) error {
+func (srv *WebInternal) Shutdown(ctx context.Context) error {
 	return srv.server.Shutdown(ctx)
 }
 

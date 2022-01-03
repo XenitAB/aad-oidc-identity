@@ -62,12 +62,12 @@ func run(ctx context.Context, cfg config.Config) error {
 		return err
 	}
 
-	internalWeb, err := webinternal.NewServer(cfg, internalIssuer, httpClient, providers)
+	iWeb, err := webinternal.NewServer(cfg, internalIssuer, httpClient, providers)
 	if err != nil {
 		return err
 	}
 
-	externalWeb, err := webexternal.NewServer(cfg, keyHandler)
+	eWeb, err := webexternal.NewServer(cfg, keyHandler)
 	if err != nil {
 		return err
 	}
@@ -77,7 +77,7 @@ func run(ctx context.Context, cfg config.Config) error {
 	g, ctx := errgroup.WithContext(ctx)
 
 	g.Go(func() error {
-		if err := internalWeb.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+		if err := iWeb.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
 			return err
 		}
 
@@ -85,7 +85,7 @@ func run(ctx context.Context, cfg config.Config) error {
 	})
 
 	g.Go(func() error {
-		if err := externalWeb.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+		if err := eWeb.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
 			return err
 		}
 
@@ -111,7 +111,7 @@ func run(ctx context.Context, cfg config.Config) error {
 	defer shutdownCancel()
 
 	g.Go(func() error {
-		if err := externalWeb.Shutdown(shutdownCtx); err != nil {
+		if err := eWeb.Shutdown(shutdownCtx); err != nil {
 			return err
 		}
 
@@ -119,7 +119,7 @@ func run(ctx context.Context, cfg config.Config) error {
 	})
 
 	g.Go(func() error {
-		if err := internalWeb.Shutdown(shutdownCtx); err != nil {
+		if err := iWeb.Shutdown(shutdownCtx); err != nil {
 			return err
 		}
 
