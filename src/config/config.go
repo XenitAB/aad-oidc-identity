@@ -14,6 +14,8 @@ type Config struct {
 	Environment          string `arg:"--environment,env:ENVIRONMENT" default:"local" help:"the environment the application is running in currently"`
 	ExternalIssuer       string `arg:"--external-issuer,env:EXTERNAL_ISSUER,required" help:"the external issuer uri"`
 	AzureDefaultTenantID string `arg:"--azure-default-tenant-id,env:AZURE_DEFAULT_TENANT_ID,required" help:"the default azure tenant id to issue tokens for"`
+	Namespace            string `arg:"--namespace,env:NAMESPACE,required" help:"the namespace the service is running in"`
+	RsaKeySecretName     string `arg:"--rsa-key-secret-name,env:RSA_KEY_SECRET_NAME" default:"aad-oidc-identity-jwks" help:"the kubernetes secret name for the RSA key used to create the jwks"`
 }
 
 func Load(args []string) (Config, error) {

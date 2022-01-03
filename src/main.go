@@ -35,12 +35,19 @@ func main() {
 }
 
 func run(ctx context.Context, cfg config.Config) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	g, ctx := errgroup.WithContext(ctx)
+
 	dataReader, err := data.NewReader(cfg, "")
 	if err != nil {
 		return err
 	}
 
-	rsaKey, err := dataReader.GetCertificateFromSecret(context.Background(), "default", "aad-oidc-identity-jwks")
+	rsaKeyCtx, rsaKeyCtxCancel := context.WithTimeout(ctx, 5*time.Second)
+	defer rsaKeyCtxCancel()
+
+	rsaKey, err := dataReader.GetCertificate(rsaKeyCtx)
 	if err != nil {
 		return err
 	}
@@ -71,10 +78,6 @@ func run(ctx context.Context, cfg config.Config) error {
 	if err != nil {
 		return err
 	}
-
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	g, ctx := errgroup.WithContext(ctx)
 
 	g.Go(func() error {
 		if err := iWeb.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {

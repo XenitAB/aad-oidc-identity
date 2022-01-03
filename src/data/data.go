@@ -26,6 +26,8 @@ type DataReader struct {
 	kubeConfig           *rest.Config
 	httpClient           *http.Client
 	defaultAzureTenantId string
+	namespace            string
+	rsaKeySecretName     string
 }
 
 func NewReader(cfg config.Config, kubeConfigPath string) (*DataReader, error) {
@@ -49,6 +51,8 @@ func NewReader(cfg config.Config, kubeConfigPath string) (*DataReader, error) {
 		kubeConfig:           config,
 		httpClient:           httpClient,
 		defaultAzureTenantId: cfg.AzureDefaultTenantID,
+		namespace:            cfg.Namespace,
+		rsaKeySecretName:     cfg.RsaKeySecretName,
 	}, nil
 }
 
@@ -116,23 +120,23 @@ func newHttpClient(restConfig *rest.Config) (*http.Client, error) {
 	return httpClient, nil
 }
 
-func (k *DataReader) GetCertificateFromSecret(ctx context.Context, namespace string, name string) (*rsa.PrivateKey, error) {
+func (k *DataReader) GetCertificate(ctx context.Context) (*rsa.PrivateKey, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	secret, err := k.kubeClient.CoreV1().Secrets(namespace).Get(ctx, name, metav1.GetOptions{})
+	secret, err := k.kubeClient.CoreV1().Secrets(k.namespace).Get(ctx, k.rsaKeySecretName, metav1.GetOptions{})
 	if err != nil {
 		return nil, err
 	}
 
 	certBytes, ok := secret.Data["tls.crt"]
 	if !ok {
-		return nil, fmt.Errorf("unable to extract 'tls.crt' from secret %s/%s", namespace, name)
+		return nil, fmt.Errorf("unable to extract 'tls.crt' from secret %s/%s", k.namespace, k.rsaKeySecretName)
 	}
 
 	keyBytes, ok := secret.Data["tls.key"]
 	if !ok {
-		return nil, fmt.Errorf("unable to extract 'tls.key' from secret %s/%s", namespace, name)
+		return nil, fmt.Errorf("unable to extract 'tls.key' from secret %s/%s", k.namespace, k.rsaKeySecretName)
 	}
 
 	keyPem, _ := pem.Decode(keyBytes)
