@@ -79,7 +79,7 @@ func run(ctx context.Context, cfg config.Config) error {
 		webinternal.WithIssuerExternal(cfg.ExternalIssuer),
 		webinternal.WithAudience(cfg.TokenAudience),
 		webinternal.WithHttpClient(httpClient),
-		webinternal.WithProviderTokenGetter(providers))
+		webinternal.WithGetTokenFns(providers))
 	if err != nil {
 		return err
 	}
@@ -88,7 +88,7 @@ func run(ctx context.Context, cfg config.Config) error {
 		webexternal.WithAddress(cfg.Address),
 		webexternal.WithPort(cfg.ExternalPort),
 		webexternal.WithIssuer(cfg.ExternalIssuer),
-		webexternal.WithPublicKeyGetter(keyHandler))
+		webexternal.WithGetPublicKeySetFn(keyHandler.GetPublicKeySet))
 	if err != nil {
 		return err
 	}
@@ -151,32 +151,32 @@ func run(ctx context.Context, cfg config.Config) error {
 	return nil
 }
 
-func newProviders(cfg config.Config, kubeClient *kube.KubeClient, keyHandler *key.KeyHandler) (map[string]webinternal.TokenGetter, error) {
+func newProviders(cfg config.Config, kubeClient *kube.KubeClient, keyHandler *key.KeyHandler) (map[string]webinternal.GetTokenFn, error) {
 	azure, err := provider.NewAzureProvider(
-		provider.WithDataGetter(kubeClient),
-		provider.WithPrivateKeyGetter(keyHandler),
+		provider.WithGetServiceAccountInfoFn(kubeClient.GetServiceAccountInfo),
+		provider.WithGetPrivateKeyFn(keyHandler.GetPrivateKey),
 		provider.WithAzureDefaultTenantId(cfg.AzureDefaultTenantID))
 	if err != nil {
 		return nil, err
 	}
 
 	aws, err := provider.NewAwsProvider(
-		provider.WithDataGetter(kubeClient),
-		provider.WithPrivateKeyGetter(keyHandler))
+		provider.WithGetServiceAccountInfoFn(kubeClient.GetServiceAccountInfo),
+		provider.WithGetPrivateKeyFn(keyHandler.GetPrivateKey))
 	if err != nil {
 		return nil, err
 	}
 
 	google, err := provider.NewGoogleProvider(
-		provider.WithDataGetter(kubeClient),
-		provider.WithPrivateKeyGetter(keyHandler))
+		provider.WithGetServiceAccountInfoFn(kubeClient.GetServiceAccountInfo),
+		provider.WithGetPrivateKeyFn(keyHandler.GetPrivateKey))
 	if err != nil {
 		return nil, err
 	}
 
-	return map[string]webinternal.TokenGetter{
-		"azure":  azure,
-		"aws":    aws,
-		"google": google,
+	return map[string]webinternal.GetTokenFn{
+		"azure":  azure.GetToken,
+		"aws":    aws.GetToken,
+		"google": google.GetToken,
 	}, nil
 }

@@ -3,10 +3,10 @@ package webexternal
 import "fmt"
 
 type options struct {
-	address string
-	port    int
-	issuer  string
-	key     publicKeyGetter
+	address         string
+	port            int
+	issuer          string
+	getPublicKeySet getPublicKeySetFn
 }
 
 func (opts *options) Validate() error {
@@ -22,8 +22,8 @@ func (opts *options) Validate() error {
 		return fmt.Errorf("issuer is empty")
 	}
 
-	if opts.key == nil {
-		return fmt.Errorf("key is nil")
+	if opts.getPublicKeySet == nil {
+		return fmt.Errorf("getPublicKeySet is nil")
 	}
 
 	return nil
@@ -73,10 +73,10 @@ func WithIssuer(opt string) Option {
 	}
 }
 
-func WithPublicKeyGetter(opt publicKeyGetter) Option {
+func WithGetPublicKeySetFn(opt getPublicKeySetFn) Option {
 	return func(opts *options) {
 		if opt != nil {
-			opts.key = opt
+			opts.getPublicKeySet = opt
 		}
 	}
 }

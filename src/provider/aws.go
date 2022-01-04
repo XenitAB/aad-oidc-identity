@@ -14,8 +14,8 @@ const (
 )
 
 type AwsProvider struct {
-	data dataGetter
-	key  privateKeyGetter
+	getServiceAccountInfo getServiceAccountInfoFn
+	getPrivateKey         getPrivateKeyFn
 }
 
 func (p *AwsProvider) validate() error {
@@ -29,8 +29,8 @@ func NewAwsProvider(setters ...Option) (*AwsProvider, error) {
 	}
 
 	p := &AwsProvider{
-		data: opts.dataGetter,
-		key:  opts.privateKeyGetter,
+		getServiceAccountInfo: opts.getServiceAccountInfo,
+		getPrivateKey:         opts.getPrivateKey,
 	}
 
 	err = p.validate()
@@ -53,7 +53,7 @@ func (a *awsData) validate() error {
 }
 
 func (p *AwsProvider) getProviderData(ctx context.Context, namespace string, name string) (awsData, error) {
-	annotations, err := p.data.GetData(ctx, namespace, name)
+	annotations, err := p.getServiceAccountInfo(ctx, namespace, name)
 	if err != nil {
 		return awsData{}, err
 	}
@@ -122,7 +122,7 @@ func (p *AwsProvider) getAccessToken(ctx context.Context, awsData awsData, inter
 }
 
 func (p *AwsProvider) GetToken(ctx context.Context, issuer string, subject string) ([]byte, string, error) {
-	internalToken, err := newAccessToken(p.key, issuer, subject, "api://AWSTokenExchange")
+	internalToken, err := newAccessToken(p.getPrivateKey, issuer, subject, "api://AWSTokenExchange")
 	if err != nil {
 		return nil, "", err
 	}

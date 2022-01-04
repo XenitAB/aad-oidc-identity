@@ -3,8 +3,8 @@ package provider
 import "fmt"
 
 type options struct {
-	dataGetter                 dataGetter
-	privateKeyGetter           privateKeyGetter
+	getServiceAccountInfo      getServiceAccountInfoFn
+	getPrivateKey              getPrivateKeyFn
 	azureDefaultTenantId       string
 	azureDefaultScope          string
 	googleDefaultScope         string
@@ -14,12 +14,12 @@ type options struct {
 }
 
 func (opts *options) Validate() error {
-	if opts.dataGetter == nil {
-		return fmt.Errorf("data is nil")
+	if opts.getServiceAccountInfo == nil {
+		return fmt.Errorf("getServiceAccountInfo is nil")
 	}
 
-	if opts.privateKeyGetter == nil {
-		return fmt.Errorf("key is nil")
+	if opts.getPrivateKey == nil {
+		return fmt.Errorf("getPrivateKey is nil")
 	}
 
 	return nil
@@ -45,18 +45,18 @@ func newOptions(setters ...Option) (*options, error) {
 
 type Option func(*options)
 
-func WithDataGetter(opt dataGetter) Option {
+func WithGetServiceAccountInfoFn(opt getServiceAccountInfoFn) Option {
 	return func(opts *options) {
 		if opt != nil {
-			opts.dataGetter = opt
+			opts.getServiceAccountInfo = opt
 		}
 	}
 }
 
-func WithPrivateKeyGetter(opt privateKeyGetter) Option {
+func WithGetPrivateKeyFn(opt getPrivateKeyFn) Option {
 	return func(opts *options) {
 		if opt != nil {
-			opts.privateKeyGetter = opt
+			opts.getPrivateKey = opt
 		}
 	}
 }

@@ -12,8 +12,7 @@ type options struct {
 	issuerExternal string
 	audience       string
 	httpClient     *http.Client
-	// FIXME: Better name
-	providerTokenGetter map[string]TokenGetter
+	getTokens      map[string]GetTokenFn
 }
 
 func (opts *options) Validate() error {
@@ -41,8 +40,8 @@ func (opts *options) Validate() error {
 		return fmt.Errorf("httpClient is nil")
 	}
 
-	if len(opts.providerTokenGetter) == 0 {
-		return fmt.Errorf("providerTokenGetter is not set")
+	if len(opts.getTokens) == 0 {
+		return fmt.Errorf("getTokens is not set")
 	}
 
 	return nil
@@ -116,10 +115,10 @@ func WithHttpClient(opt *http.Client) Option {
 	}
 }
 
-func WithProviderTokenGetter(opt map[string]TokenGetter) Option {
+func WithGetTokenFns(opt map[string]GetTokenFn) Option {
 	return func(opts *options) {
 		if len(opt) != 0 {
-			opts.providerTokenGetter = opt
+			opts.getTokens = opt
 		}
 	}
 }

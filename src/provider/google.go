@@ -20,12 +20,12 @@ const (
 )
 
 type GoogleProvider struct {
-	data                 dataGetter
-	key                  privateKeyGetter
-	defaultProjectNumber string
-	defaultPoolId        string
-	defaultProviderId    string
-	defaultScope         string
+	getServiceAccountInfo getServiceAccountInfoFn
+	getPrivateKey         getPrivateKeyFn
+	defaultProjectNumber  string
+	defaultPoolId         string
+	defaultProviderId     string
+	defaultScope          string
 }
 
 func (p *GoogleProvider) validate() error {
@@ -43,12 +43,12 @@ func NewGoogleProvider(setters ...Option) (*GoogleProvider, error) {
 	}
 
 	p := &GoogleProvider{
-		data:                 opts.dataGetter,
-		key:                  opts.privateKeyGetter,
-		defaultScope:         opts.googleDefaultScope,
-		defaultProjectNumber: opts.googleDefaultProjectNumber,
-		defaultPoolId:        opts.googleDefaultPoolId,
-		defaultProviderId:    opts.googleDefaultProviderId,
+		getServiceAccountInfo: opts.getServiceAccountInfo,
+		getPrivateKey:         opts.getPrivateKey,
+		defaultScope:          opts.googleDefaultScope,
+		defaultProjectNumber:  opts.googleDefaultProjectNumber,
+		defaultPoolId:         opts.googleDefaultPoolId,
+		defaultProviderId:     opts.googleDefaultProviderId,
 	}
 
 	err = p.validate()
@@ -92,7 +92,7 @@ func (d *googleData) validate() error {
 }
 
 func (p *GoogleProvider) getProviderData(ctx context.Context, namespace string, name string) (googleData, error) {
-	annotations, err := p.data.GetData(ctx, namespace, name)
+	annotations, err := p.getServiceAccountInfo(ctx, namespace, name)
 	if err != nil {
 		return googleData{}, err
 	}
@@ -257,7 +257,7 @@ func (p *GoogleProvider) GetToken(ctx context.Context, issuer string, subject st
 
 	audience := fmt.Sprintf("https://iam.googleapis.com/projects/%s/locations/global/workloadIdentityPools/%s/providers/%s", reqData.projectNumber, reqData.poolId, reqData.providerId)
 
-	internalToken, err := newAccessToken(p.key, issuer, subject, audience)
+	internalToken, err := newAccessToken(p.getPrivateKey, issuer, subject, audience)
 	if err != nil {
 		return nil, "", err
 	}

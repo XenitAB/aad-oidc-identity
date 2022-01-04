@@ -179,7 +179,7 @@ func (k *KubeClient) GetCertificate(ctx context.Context) (*rsa.PrivateKey, error
 	return privateKey, nil
 }
 
-func (k *KubeClient) GetData(ctx context.Context, namespace string, name string) (map[string]string, error) {
+func (k *KubeClient) GetServiceAccountInfo(ctx context.Context, namespace string, name string) (map[string]string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 

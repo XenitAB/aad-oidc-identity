@@ -15,10 +15,7 @@ type WebInternal struct {
 	server *http.Server
 }
 
-// FIXME: Better name
-type TokenGetter interface {
-	GetToken(ctx context.Context, issuer string, subject string) ([]byte, string, error)
-}
+type GetTokenFn func(ctx context.Context, issuer string, subject string) ([]byte, string, error)
 
 func NewServer(setters ...Option) (*WebInternal, error) {
 	opts, err := newOptions(setters...)
@@ -27,8 +24,8 @@ func NewServer(setters ...Option) (*WebInternal, error) {
 	}
 	router := http.NewServeMux()
 
-	for provider, t := range opts.providerTokenGetter {
-		router.HandleFunc(fmt.Sprintf("/token/%s", provider), tokenHandler(t, opts.issuerExternal))
+	for provider, getToken := range opts.getTokens {
+		router.HandleFunc(fmt.Sprintf("/token/%s", provider), tokenHandler(getToken, opts.issuerExternal))
 	}
 
 	oidcHandler := oidchttp.New(router,
@@ -58,7 +55,7 @@ func (srv *WebInternal) Shutdown(ctx context.Context) error {
 	return srv.server.Shutdown(ctx)
 }
 
-func tokenHandler(t TokenGetter, issuer string) http.HandlerFunc {
+func tokenHandler(getTokenFn GetTokenFn, issuer string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		subject, err := getSubjectFromClaims(r)
 		if err != nil {
@@ -67,7 +64,7 @@ func tokenHandler(t TokenGetter, issuer string) http.HandlerFunc {
 			return
 		}
 
-		responseData, contentType, err := t.GetToken(r.Context(), issuer, subject)
+		responseData, contentType, err := getTokenFn(r.Context(), issuer, subject)
 		if err != nil {
 			log.Printf("unable to get token from provider: %v", err)
 			w.WriteHeader(http.StatusInternalServerError)

@@ -12,18 +12,11 @@ import (
 	"github.com/lestrrat-go/jwx/jwt"
 )
 
-// FIXME: Better name
-type privateKeyGetter interface {
-	GetPrivateKey() jwk.Key
-}
+type getPrivateKeyFn func() jwk.Key
+type getServiceAccountInfoFn func(ctx context.Context, namespace string, name string) (map[string]string, error)
 
-// FIXME: Better name
-type dataGetter interface {
-	GetData(ctx context.Context, namespace string, name string) (map[string]string, error)
-}
-
-func newAccessToken(key privateKeyGetter, issuer string, subject string, aud string) (string, error) {
-	privKey := key.GetPrivateKey()
+func newAccessToken(getPrivateKey getPrivateKeyFn, issuer string, subject string, aud string) (string, error) {
+	privKey := getPrivateKey()
 
 	c := map[string]interface{}{
 		jwt.IssuerKey:     issuer,

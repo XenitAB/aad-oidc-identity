@@ -15,10 +15,7 @@ type WebExternal struct {
 	server *http.Server
 }
 
-// FIXME: Better name
-type publicKeyGetter interface {
-	GetPublicKeySet() jwk.Set
-}
+type getPublicKeySetFn func() jwk.Set
 
 func NewServer(setters ...Option) (*WebExternal, error) {
 	opts, err := newOptions(setters...)
@@ -28,7 +25,7 @@ func NewServer(setters ...Option) (*WebExternal, error) {
 
 	router := http.NewServeMux()
 	router.HandleFunc("/.well-known/openid-configuration", metadataHandler(opts.issuer))
-	router.HandleFunc("/jwks", jwksHandler(opts.key))
+	router.HandleFunc("/jwks", jwksHandler(opts.getPublicKeySet))
 
 	addr := fmt.Sprintf("%s:%d", opts.address, opts.port)
 
@@ -85,9 +82,9 @@ func metadataHandler(externalIssuer string) http.HandlerFunc {
 	}
 }
 
-func jwksHandler(key publicKeyGetter) http.HandlerFunc {
+func jwksHandler(getPublicKeySet getPublicKeySetFn) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		pubKey := key.GetPublicKeySet()
+		pubKey := getPublicKeySet()
 
 		w.Header().Set("Content-Type", "application/json")
 		e := json.NewEncoder(w)

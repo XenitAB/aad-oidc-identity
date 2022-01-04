@@ -16,10 +16,10 @@ const (
 )
 
 type AzureProvider struct {
-	data            dataGetter
-	key             privateKeyGetter
-	defaultTenantId string
-	defaultScope    string
+	getServiceAccountInfo getServiceAccountInfoFn
+	getPrivateKey         getPrivateKeyFn
+	defaultTenantId       string
+	defaultScope          string
 }
 
 func (p *AzureProvider) validate() error {
@@ -41,10 +41,10 @@ func NewAzureProvider(setters ...Option) (*AzureProvider, error) {
 	}
 
 	p := &AzureProvider{
-		data:            opts.dataGetter,
-		key:             opts.privateKeyGetter,
-		defaultTenantId: opts.azureDefaultTenantId,
-		defaultScope:    opts.azureDefaultScope,
+		getServiceAccountInfo: opts.getServiceAccountInfo,
+		getPrivateKey:         opts.getPrivateKey,
+		defaultTenantId:       opts.azureDefaultTenantId,
+		defaultScope:          opts.azureDefaultScope,
 	}
 
 	err = p.validate()
@@ -78,7 +78,7 @@ func (d *azureData) validate() error {
 }
 
 func (p *AzureProvider) getProviderData(ctx context.Context, namespace string, name string) (azureData, error) {
-	annotations, err := p.data.GetData(ctx, namespace, name)
+	annotations, err := p.getServiceAccountInfo(ctx, namespace, name)
 	if err != nil {
 		return azureData{}, err
 	}
@@ -158,7 +158,7 @@ func (p *AzureProvider) getAccessToken(ctx context.Context, azureData azureData,
 }
 
 func (p *AzureProvider) GetToken(ctx context.Context, issuer string, subject string) ([]byte, string, error) {
-	internalToken, err := newAccessToken(p.key, issuer, subject, "api://AzureADTokenExchange")
+	internalToken, err := newAccessToken(p.getPrivateKey, issuer, subject, "api://AzureADTokenExchange")
 	if err != nil {
 		return nil, "", err
 	}
